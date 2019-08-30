@@ -13,6 +13,8 @@ all: for
 for:
 	${MC} -arch=${ARCH} -mcpu=${CPU} for.s -filetype=obj -o for.o
 	${LLD} -shared for.o -o for.co
+	${MC} -arch=${ARCH} -mcpu=${CPU} add.s -filetype=obj -o add.o
+	${LLD} -shared add.o -o add.co
 
 clean:
 	rm *.co *.o for

@@ -330,7 +330,9 @@ int main() {
 
 
     int CRS_64 = (C * R * S+63)/64;
+    int CRS_32 = (C * R * S+31)/32;
     int K_64 =  (K+63)/64;
+    int K_8 = (K+7)/8;
 
 
     int Global_Size = ((K+127)/128)* ((C * R * S+127)/128);
@@ -469,8 +471,9 @@ for (int i =0;i<C*R*S;i++)
     hipDeviceGet(&device, 0);
     hipCtxCreate(&context, 0, device);
     hipModule_t Module;
+    hipModule_t Module_add;
     hipFunction_t Function;
-    
+    hipFunction_t Function_add; 
 
 
 
@@ -523,7 +526,12 @@ for (int i =0;i<C*R*S;i++)
     printf("before get function\n");
 
     hipModuleLoad(&Module, "for.co");
+    hipModuleLoad(&Module_add, "add.co");
     hipModuleGetFunction(&Function, Module, "back_weights");
+
+    hipModuleGetFunction(&Function_add, Module_add, "split_add");
+
+
     printf("after get function\n");
 
     struct {
@@ -654,6 +662,7 @@ for (int i =0;i<C*R*S;i++)
     hipEventCreate(&stop);
     hipEventRecord(start, NULL);
 
+
     hipModuleLaunchKernel(Function,K_64,CRS_64,16,Threads_Size,1,1,0,0,NULL,(void**)&config);
     //hipModuleLaunchKernel(Function,1,1,1,1,1,1,0,0,NULL,(void**)&config);
 
@@ -689,6 +698,115 @@ for (int i =0;i<C*R*S;i++)
     std::cout<<std::endl;
 
 
+//------------------add---------------------------
+
+    float *host_test_add = (float *)malloc(256*sizeof(float));
+    unsigned int *second_test_add =(unsigned int*)malloc(256*sizeof(unsigned int));
+
+    float* device_test_add;
+    unsigned int *device_second_test_add;
+
+
+    HIP_ASSERT(hipMalloc(&device_test_add, 256*sizeof(float)));
+    HIP_ASSERT(hipMalloc(&device_second_test_add, 256*sizeof(unsigned int)));
+ 
+
+
+    struct {
+       void* matrixC;//0x00 
+       void* final_matrixC;//0x08
+       unsigned int KCRS;//0x10
+       unsigned int CRS;
+       void* test;//0x18
+       void* second_test;//0x20
+      
+    } args_add;
+
+
+    int kcrs_16_size = 16*K*C*R*S* sizeof(float); 
+    int kcrs_size = K*C*R*S* sizeof(float);
+    float* host_16_KCRS = (float*)malloc(kcrs_16_size);
+    float* host_final_KCRS = (float*)malloc(kcrs_size);
+
+    for (int i=0;i< 16*K*C*R*S;i++)
+    {
+        host_16_KCRS[i] = i;
+    }
+
+
+    float* device_16_KCRS;
+    float* device_final_KCRS;
+    HIP_ASSERT(hipMalloc((void**)&device_16_KCRS, kcrs_16_size));
+    HIP_ASSERT(hipMalloc((void**)&device_final_KCRS, kcrs_size));
+    hipMemcpyHtoD( device_16_KCRS, host_16_KCRS, kcrs_16_size );
+    hipMemcpyHtoD( device_final_KCRS, host_final_KCRS, kcrs_size );
+
+
+    args_add.matrixC = (void*)device_16_KCRS;
+    args_add.final_matrixC = (void*)device_final_KCRS;
+    args_add.KCRS = K*C*R*S;
+    args_add.CRS = C*R*S;
+    args_add.test = (void*)device_test_add;
+    args_add.second_test= (void*)device_second_test_add;
+
+
+
+
+    int Threads_Size_add = 64;
+
+    size_t size_add = sizeof(args_add);
+
+    void *config_add[] = {
+        HIP_LAUNCH_PARAM_BUFFER_POINTER, &args_add,
+        HIP_LAUNCH_PARAM_BUFFER_SIZE, &size_add,
+        HIP_LAUNCH_PARAM_END
+    };
+
+
+    float eventMs_add = 0.0f;
+    hipEvent_t start_add, stop_add;
+    hipEventCreate(&start_add);
+    hipEventCreate(&stop_add);
+    hipEventRecord(start_add, NULL);
+
+
+
+    hipModuleLaunchKernel(Function_add,K_8,CRS_32,1,Threads_Size_add,1,1,0,0,NULL,(void**)&config_add);
+
+    hipEventRecord(stop_add, NULL);
+    hipEventSynchronize(stop_add);
+    hipEventElapsedTime(&eventMs_add, start_add, stop_add);
+    printf("ADD kernel profiler computation time taken  = %6.3fms\n", eventMs_add);
+
+
+    CHECK(hipMemcpy(host_16_KCRS,device_16_KCRS, kcrs_16_size, hipMemcpyDeviceToHost));
+    for (int i =0 ;i<64;i++)
+    {
+        printf("==========after add %d  %f ======\n",i,host_16_KCRS[i]);
+    }
+
+
+    CHECK(hipMemcpy(host_test_add,device_test_add, 256*sizeof(float), hipMemcpyDeviceToHost));
+    CHECK(hipMemcpy(second_test_add,device_second_test_add, 256*sizeof(unsigned int), hipMemcpyDeviceToHost));
+  
+
+
+    //for debug
+    for (int i=0;i<256;i++)
+    {
+        printf("==========add test %d  %f ======\n",i,host_test_add[i]);
+    }
+    for (int i=0;i<256;i++)
+    {
+        printf("==========add test second %d %u ======\n",i,second_test_add[i]);
+    }
+
+
+
+    HIP_ASSERT(hipFree(device_16_KCRS));
+    HIP_ASSERT(hipFree(device_test_add));
+    HIP_ASSERT(hipFree(device_second_test_add));
+
 
 
 
@@ -703,6 +821,12 @@ for (int i =0;i<C*R*S;i++)
     HIP_ASSERT(hipFree(device_second_test));
 
 
+    free(host_16_KCRS);
+    free(host_test_add);
+    free(second_test_add);
+
+
+
     free(in);
     free(out);
     free(wei);
@@ -713,6 +837,22 @@ for (int i =0;i<C*R*S;i++)
     free(outIndex);
     free(host_test);
     free(second_test);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     return 0;
 }

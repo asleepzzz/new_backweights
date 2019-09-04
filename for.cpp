@@ -105,11 +105,21 @@ void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int grou
                     for (int l =0;l<weiW;l++)
                     {
                         int index = computeWeiIndex( g,i,  j,  k, l, weiN, weiC, weiH, weiW,group_count); 
-                        if (cpu[index]!=hip[index])
+                        float tmp=0;
+                        for (int u =0;u<16;u++)
                         {
-                            printf("not queal %f %f gkcrs %d %d %d %d %d\n",cpu[index],hip[index],g,i,j,k,l);
+                            tmp+=hip[index+u*weiN*weiC*weiH*weiW];
+                            if (index==0)
+                            {
+                                printf("16 combine %d  index %d is %f\n",u,index+u*weiN*weiC*weiH*weiW,hip[index+u*weiN*weiC*weiH*weiW]);
+                            }
+                            
+                        }
+                        if (cpu[index]!=tmp)
+                        {
+                            printf("not queal %f %f gkcrs %d %d %d %d %d\n",cpu[index],tmp,g,i,j,k,l);
                         } else {
-                            printf("the same %f %f gkcrs %d %d %d %d %d\n",cpu[index],hip[index],g,i,j,k,l);
+                            printf("the same %f %f gkcrs %d %d %d %d %d\n",cpu[index],tmp,g,i,j,k,l);
                         }
                     }
                 }
@@ -321,18 +331,29 @@ void fconv_generate_span( unsigned int* p_span, const group_prop_t* p_prop, cons
 
 int main() {
 //dilation kernel =r*(k-1)+1
-    int N=16 ; int C=8;int H=6;int W=6;//in
-    int K=8;int outH=4;int outW=4;///out,carefully,you need to place correct size when stride and dilation
-    int R =3;int S=3;//wei
+    int N=3 ; int C=17;int H=5;int W=5;//in
+    int K=92;///out,carefully,you need to place correct size when stride and dilation
+    int padh=0; int padw=0;//S for padw
+    int R =2;int S=2;//wei
     int strideH = 1; int strideW =1;
     int dilation_h =1;int dilation_w =1;
     int group_count =1;
+    int outH=(2*padh+H-R)/strideH+1;
+    int outW=(2*padw+W-S)/strideW+1;
 
-
+    printf("outH is %d outW is %d \n",outH,outW);
     int CRS_64 = (C * R * S+63)/64;
     int CRS_32 = (C * R * S+31)/32;
     int K_64 =  (K+63)/64;
     int K_8 = (K+7)/8;
+
+
+    if (((N*outH*outW)%16!=0) || (C*R*S%4!=0)  || (K%4!=0) )//k,crs is block of 4 ,if out of bound ,drop all block
+    //NOO need 16 to split ,but after split,should factor of 4
+    {
+        printf("please follow rules\n");
+        return 0;
+    }    
 
 
     int Global_Size = ((K+127)/128)* ((C * R * S+127)/128);
@@ -340,7 +361,7 @@ int main() {
 
     int inSize = N*C*H*W* sizeof(float);
     int outSize = N*K*outH*outW* sizeof(float);
-    int weiGroupSize = K*C*R*S* sizeof(float)/(group_count);
+    int weiGroupSize = 16*K*C*R*S* sizeof(float);
 
     float *in = (float *)malloc(inSize);
     float *out = (float *)malloc(outSize);
@@ -359,7 +380,7 @@ int main() {
 
     for (int i=0;i<outSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
-         out[i] = 1.0*i;//r;
+         out[i] = 1.0;//*i;//r;
          //printf("output %f %d\n",out[i],i);
     }
 
@@ -664,6 +685,11 @@ for (int i =0;i<C*R*S;i++)
 
 
     hipModuleLaunchKernel(Function,K_64,CRS_64,16,Threads_Size,1,1,0,0,NULL,(void**)&config);
+
+
+
+
+
     //hipModuleLaunchKernel(Function,1,1,1,1,1,1,0,0,NULL,(void**)&config);
 
     //hipModuleLaunchKernel(Function,4,1,1,4,1,1,0,0,NULL,(void**)&config);
@@ -692,14 +718,15 @@ for (int i =0;i<C*R*S;i++)
       printf("dwei %d is %f\n",i,dwei_gpu[i]);
     }
 
-
     compare(wei,dwei_gpu,K, C, R, S,group_count);
 
     std::cout<<std::endl;
 
 
+
 //------------------add---------------------------
 
+/*
     float *host_test_add = (float *)malloc(256*sizeof(float));
     unsigned int *second_test_add =(unsigned int*)malloc(256*sizeof(unsigned int));
 
@@ -730,9 +757,8 @@ for (int i =0;i<C*R*S;i++)
 
     for (int i=0;i< 16*K*C*R*S;i++)
     {
-        host_16_KCRS[i] = i;
+        host_16_KCRS[i] = i*1.0f;
     }
-
 
     float* device_16_KCRS;
     float* device_final_KCRS;
@@ -742,7 +768,7 @@ for (int i =0;i<C*R*S;i++)
     hipMemcpyHtoD( device_final_KCRS, host_final_KCRS, kcrs_size );
 
 
-    args_add.matrixC = (void*)device_16_KCRS;
+    args_add.matrixC = (void*)devicedwei;//(void*)device_16_KCRS;
     args_add.final_matrixC = (void*)device_final_KCRS;
     args_add.KCRS = K*C*R*S;
     args_add.CRS = C*R*S;
@@ -779,33 +805,41 @@ for (int i =0;i<C*R*S;i++)
     printf("ADD kernel profiler computation time taken  = %6.3fms\n", eventMs_add);
 
 
-    CHECK(hipMemcpy(host_16_KCRS,device_16_KCRS, kcrs_16_size, hipMemcpyDeviceToHost));
+    CHECK(hipMemcpy(host_final_KCRS,device_final_KCRS, kcrs_size, hipMemcpyDeviceToHost));
+    
     for (int i =0 ;i<64;i++)
     {
-        printf("==========after add %d  %f ======\n",i,host_16_KCRS[i]);
+        printf("==========after add %d  %f ======\n",i,host_final_KCRS[i]);
     }
 
 
-    CHECK(hipMemcpy(host_test_add,device_test_add, 256*sizeof(float), hipMemcpyDeviceToHost));
-    CHECK(hipMemcpy(second_test_add,device_second_test_add, 256*sizeof(unsigned int), hipMemcpyDeviceToHost));
+    CHECK(hipMemcpy(host_test_add,device_test_add, 64*sizeof(float), hipMemcpyDeviceToHost));
+    CHECK(hipMemcpy(second_test_add,device_second_test_add, 64*sizeof(unsigned int), hipMemcpyDeviceToHost));
   
 
 
     //for debug
-    for (int i=0;i<256;i++)
+    for (int i=0;i<64;i++)
     {
         printf("==========add test %d  %f ======\n",i,host_test_add[i]);
     }
-    for (int i=0;i<256;i++)
+    for (int i=0;i<64;i++)
     {
         printf("==========add test second %d %u ======\n",i,second_test_add[i]);
     }
 
 
 
-    HIP_ASSERT(hipFree(device_16_KCRS));
-    HIP_ASSERT(hipFree(device_test_add));
-    HIP_ASSERT(hipFree(device_second_test_add));
+//    compare(wei,host_final_KCRS,K, C, R, S,group_count);
+
+//    std::cout<<std::endl;
+
+
+*/
+
+//    HIP_ASSERT(hipFree(device_16_KCRS));
+//    HIP_ASSERT(hipFree(device_test_add));
+//    HIP_ASSERT(hipFree(device_second_test_add));
 
 
 
@@ -821,9 +855,9 @@ for (int i =0;i<C*R*S;i++)
     HIP_ASSERT(hipFree(device_second_test));
 
 
-    free(host_16_KCRS);
-    free(host_test_add);
-    free(second_test_add);
+//    free(host_16_KCRS);
+//    free(host_test_add);
+//    free(second_test_add);
 
 
 

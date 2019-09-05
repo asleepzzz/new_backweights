@@ -165,7 +165,8 @@ int cnt=0;
                                         (in_j < W))
                                     {
 
-                                        //printf("kevin %d %d %d  %f add %f mul %f in %d out %d\n",cnt,x,y,weight[(k*R*S)+ (x * S) + y],in[o *C*H*W+in_i *W + in_j],out[(o*K*outH*outW) +(i*outW)+j]
+
+                                       //printf("kevin %d %d %d  %f add %f mul %f in %d out %d\n",cnt,x,y,weight[(k*R*S)+ (x * S) + y],in[o *C*H*W+in_i *W + in_j],out[(o*K*outH*outW) +(i*outW)+j]
                                         //,o *C*H*W+in_i *W + in_j,(o*K*outH*outW) +(i*outW)+j);
 /*
 if (g==0&& x==0&&y==0&&w==0) {
@@ -185,6 +186,13 @@ if (g==0&& x==0&&y==0&&w==0) {
                                         //+= in[o *C*H*W+in_i *W + in_j]
                                         //*out[(o*K*outH*outW)+outH*outW +(i*outW)+j];
 
+;//ckrs
+if (k==0 && w==0&&x==0&&y==0)
+{
+    printf("every time after add %f %f %f\n",weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y],
+in[o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j],out[(o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j]);
+}
+ 
 cnt++;
                                     
 
@@ -331,7 +339,7 @@ void fconv_generate_span( unsigned int* p_span, const group_prop_t* p_prop, cons
 
 int main() {
 //dilation kernel =r*(k-1)+1
-    int N=3 ; int C=17;int H=5;int W=5;//in
+    int N=16; int C=17;int H=5;int W=5;//in
     int K=92;///out,carefully,you need to place correct size when stride and dilation
     int padh=0; int padw=0;//S for padw
     int R =2;int S=2;//wei
@@ -348,7 +356,7 @@ int main() {
     int K_8 = (K+7)/8;
 
 
-    if (((N*outH*outW)%16!=0) || (C*R*S%4!=0)  || (K%4!=0) )//k,crs is block of 4 ,if out of bound ,drop all block
+    if (((N*outH*outW)%64!=0) || (C*R*S%4!=0)  || (K%4!=0) )//k,crs is block of 4 ,if out of bound ,drop all block
     //NOO need 16 to split ,but after split,should factor of 4
     {
         printf("please follow rules\n");
@@ -374,14 +382,16 @@ int main() {
     for (int i=0;i<inSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
 
-         in[i] = 1.0f*i;//r;
-         printf("input %d is %f \n",i,in[i]);
+        int j = (int)(r*100);
+         in[i] = 1.0f*j;//r;
+         //printf("input %d is %f \n",i,in[i]);
     }
 
     for (int i=0;i<outSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
-         out[i] = 1.0;//*i;//r;
-         //printf("output %f %d\n",out[i],i);
+         int j = (int)(r*100);
+         out[i] = 1.0f*j;//r;
+         //printf("output %d is %f \n",i,out[i]);
     }
 
     for (int i=0;i<weiGroupSize/sizeof(float);i++) {

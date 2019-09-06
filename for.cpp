@@ -92,41 +92,97 @@ void compareABOffset(unsigned int* cpu,unsigned int* gpu)
 }
 
 
-void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int group_count)
+void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int combine)
 {
-    for (int g=0;g<group_count;g++)
-    {
-        for (int i =0;i<(weiN/group_count);i++)
+    //for (int g=0;g<group_count;g++)
+    //{
+        for (int i =0;i<(weiN);i++)
         {
-            for (int j =0;j<(weiC/group_count);j++)
+            for (int j =0;j<(weiC);j++)
             {
                 for (int k =0;k<weiH;k++)
                 {
                     for (int l =0;l<weiW;l++)
                     {
-                        int index = computeWeiIndex( g,i,  j,  k, l, weiN, weiC, weiH, weiW,group_count); 
+                        int index = computeWeiIndex( 0,i,  j,  k, l, weiN, weiC, weiH, weiW,1); 
                         float tmp=0;
-                        for (int u =0;u<16;u++)
+                        if (combine ==1)
                         {
-                            tmp+=hip[index+u*weiN*weiC*weiH*weiW];
-                            if (index==0)
+                            for (int u =0;u<16;u++)
                             {
-                                printf("16 combine %d  index %d is %f\n",u,index+u*weiN*weiC*weiH*weiW,hip[index+u*weiN*weiC*weiH*weiW]);
-                            }
+                                tmp+=hip[index+u*weiN*weiC*weiH*weiW];
+                                if (index==0)
+                                {
+                                    printf("16 combine %d  index %d is %f\n",u,index+u*weiN*weiC*weiH*weiW,hip[index+u*weiN*weiC*weiH*weiW]);
+                                }
                             
-                        }
+                            }
+                        } else {
+                            tmp = hip[index];
+                        }    
+
                         if (cpu[index]!=tmp)
                         {
-                            printf("not queal %f %f gkcrs %d %d %d %d %d\n",cpu[index],tmp,g,i,j,k,l);
+                            printf("not queal %f %f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
                         } else {
-                            printf("the same %f %f gkcrs %d %d %d %d %d\n",cpu[index],tmp,g,i,j,k,l);
+                            printf("the same %f %f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
+                        }
+                    }
+                }
+            }
+        }
+    //}
+}
+
+void cpu_backward_weights(float *in,float* out,float* weight
+                          ,int N,int C,int H,int W,
+                          int K,int R,int S,
+                          int outH,int outW,
+                          int strideH, int strideW,
+                          int dilation_h,int dilation_w)
+{
+
+    struct timespec tstart={0,0}, tend={0,0};
+
+    clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+    for(int n = 0; n < N; n++)
+    {
+        for(int k = 0; k < K; k++)
+        {
+            for(int c = 0; c < C; c++)
+            {
+                for(int y = 0; y < R; y++)
+                {
+                    for(int x = 0; x < S; x++)
+                    {
+                        for(int h = 0; h < outH; h++)
+                        {
+                           for(int w = 0; w < outW; w++)
+                           {
+                                int in_h = h*dilation_h  + y*strideH ;
+                                int in_w = w*dilation_w  + x*strideW ;
+                                if((in_h >= 0) && (in_h < H) && (in_w >= 0) && (in_w < W))
+                                {
+                                    weight[k*C*R*S + c*R*S+ y * S + x] +=
+                                    in[n *C*H*W+  c*H*W+in_h *W + in_w]*
+                                    out[n*K*outH*outW +k*outH*outW+h*outW+w];
+                                }
+                           }
                         }
                     }
                 }
             }
         }
     }
+    clock_gettime(CLOCK_MONOTONIC, &tend);
+    printf("cpu computation took about %.5f seconds\n",
+           ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
+           ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+
+
 }
+
 
 
 void cpu_backward_weights_group(float *in,float* out,float* weight
@@ -146,13 +202,13 @@ int cnt=0;
         for(int g = 0; g < group_count; g++)
         {
             for(int w = 0; w < K/ group_count; w++)
-            {
+            {//name is w ,but it's k
                 for(int k = 0; k < C/ group_count; k++)
-                {
+                {//name is k ,but it's c
                     for(int x = 0; x < R; x++)
-                    {
+                    {//name is x ,but it's y
                         for(int y = 0; y < S; y++)
-                        {
+                        {//name is y ,but it's x
                             for(int i = 0; i < outH; i++)
                             {
                                 for(int j = 0; j < outW; j++)
@@ -161,6 +217,7 @@ int cnt=0;
                                     
                                     int in_i = i*dilation_h  + x*strideH ;
                                     int in_j = j*dilation_w  + y*strideW ;
+                                   printf("in_i %d in_j %d H %d, W %d x %d ,strideH %d  R %d \n",in_i,in_j,H,W,x,strideH,R); 
                                     if((in_i >= 0) && (in_i < H) && (in_j >= 0) &&
                                         (in_j < W))
                                     {
@@ -178,20 +235,29 @@ if (g==0&& x==0&&y==0&&w==0) {
                                          (o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j);
 }
 */
-                                        weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y]
+
+
+
+                                      weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y]
                                         += in[o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j]
 *out[(o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j];
+
+
+
+
+
+
 
                                         //weight[C*R*S+(k*R*S)+ (x * S) + y]
                                         //+= in[o *C*H*W+in_i *W + in_j]
                                         //*out[(o*K*outH*outW)+outH*outW +(i*outW)+j];
 
-;//ckrs
-if (k==0 && w==0&&x==0&&y==0)
-{
-    printf("every time after add %f %f %f\n",weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y],
-in[o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j],out[(o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j]);
-}
+//ckrs
+//if (k==0 && w==0&&x==0&&y==0)
+//{
+//    printf("every time after add %f %f %f\n",weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y],
+//in[o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j],out[(o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j]);
+//}
  
 cnt++;
                                     
@@ -339,10 +405,10 @@ void fconv_generate_span( unsigned int* p_span, const group_prop_t* p_prop, cons
 
 int main() {
 //dilation kernel =r*(k-1)+1
-    int N=16; int C=17;int H=5;int W=5;//in
-    int K=92;///out,carefully,you need to place correct size when stride and dilation
+    int N=16; int C=224;int H=4;int W=10;//in
+    int K=224;///out,carefully,you need to place correct size when stride and dilation
     int padh=0; int padw=0;//S for padw
-    int R =2;int S=2;//wei
+    int R =1;int S=7;//wei
     int strideH = 1; int strideW =1;
     int dilation_h =1;int dilation_w =1;
     int group_count =1;
@@ -356,7 +422,7 @@ int main() {
     int K_8 = (K+7)/8;
 
 
-    if (((N*outH*outW)%64!=0) || (C*R*S%4!=0)  || (K%4!=0) )//k,crs is block of 4 ,if out of bound ,drop all block
+    if (((N*outH*outW)%64!=0) || (C*R*S%4!=0)  || (K%4!=0) || (group_count!=1))//k,crs is block of 4 ,if out of bound ,drop all block
     //NOO need 16 to split ,but after split,should factor of 4
     {
         printf("please follow rules\n");
@@ -382,16 +448,18 @@ int main() {
     for (int i=0;i<inSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
 
-        int j = (int)(r*100);
+         int j = (int)(r*100);
+         if (j<1) j=1;
          in[i] = 1.0f*j;//r;
-         //printf("input %d is %f \n",i,in[i]);
+         printf("input %d is %f \n",i,in[i]);
     }
 
     for (int i=0;i<outSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
          int j = (int)(r*100);
+         if (j<1) j=1;
          out[i] = 1.0f*j;//r;
-         //printf("output %d is %f \n",i,out[i]);
+         printf("output %d is %f \n",i,out[i]);
     }
 
     for (int i=0;i<weiGroupSize/sizeof(float);i++) {
@@ -400,14 +468,20 @@ int main() {
     }
 
 
-
-
-    
-    cpu_backward_weights_group(in,out,wei
+    cpu_backward_weights(in,out,wei
         ,N,C,H,W,
         K,R,S,
         outH,outW,strideH,strideW,
-        dilation_h,dilation_w,group_count);
+        dilation_h,dilation_w);
+
+
+
+    
+//    cpu_backward_weights_group(in,out,wei
+//        ,N,C,H,W,
+//        K,R,S,
+//        outH,outW,strideH,strideW,
+//        dilation_h,dilation_w,group_count);
 
 //for (int i =0;i<weiGroupSize/sizeof(float);i++)
 //{
@@ -728,7 +802,8 @@ for (int i =0;i<C*R*S;i++)
       printf("dwei %d is %f\n",i,dwei_gpu[i]);
     }
 
-    compare(wei,dwei_gpu,K, C, R, S,group_count);
+    //compare
+    //compare(wei,dwei_gpu,K, C, R, S,1);
 
     std::cout<<std::endl;
 
@@ -736,7 +811,7 @@ for (int i =0;i<C*R*S;i++)
 
 //------------------add---------------------------
 
-/*
+
     float *host_test_add = (float *)malloc(256*sizeof(float));
     unsigned int *second_test_add =(unsigned int*)malloc(256*sizeof(unsigned int));
 
@@ -762,19 +837,19 @@ for (int i =0;i<C*R*S;i++)
 
     int kcrs_16_size = 16*K*C*R*S* sizeof(float); 
     int kcrs_size = K*C*R*S* sizeof(float);
-    float* host_16_KCRS = (float*)malloc(kcrs_16_size);
+    //float* host_16_KCRS = (float*)malloc(kcrs_16_size);
     float* host_final_KCRS = (float*)malloc(kcrs_size);
 
-    for (int i=0;i< 16*K*C*R*S;i++)
-    {
-        host_16_KCRS[i] = i*1.0f;
-    }
+    //for (int i=0;i< 16*K*C*R*S;i++)
+    //{
+    //    host_16_KCRS[i] = i*1.0f;
+    //}
 
-    float* device_16_KCRS;
+    //float* device_16_KCRS;
     float* device_final_KCRS;
-    HIP_ASSERT(hipMalloc((void**)&device_16_KCRS, kcrs_16_size));
+    //HIP_ASSERT(hipMalloc((void**)&device_16_KCRS, kcrs_16_size));
     HIP_ASSERT(hipMalloc((void**)&device_final_KCRS, kcrs_size));
-    hipMemcpyHtoD( device_16_KCRS, host_16_KCRS, kcrs_16_size );
+    //hipMemcpyHtoD( device_16_KCRS, host_16_KCRS, kcrs_16_size );
     hipMemcpyHtoD( device_final_KCRS, host_final_KCRS, kcrs_size );
 
 
@@ -840,17 +915,17 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-//    compare(wei,host_final_KCRS,K, C, R, S,group_count);
+    compare(wei,host_final_KCRS,K, C, R, S,0);
 
-//    std::cout<<std::endl;
+    std::cout<<std::endl;
 
 
-*/
+
 
 //    HIP_ASSERT(hipFree(device_16_KCRS));
-//    HIP_ASSERT(hipFree(device_test_add));
-//    HIP_ASSERT(hipFree(device_second_test_add));
-
+    HIP_ASSERT(hipFree(device_test_add));
+    HIP_ASSERT(hipFree(device_second_test_add));
+    HIP_ASSERT(hipFree(device_final_KCRS));    
 
 
 
@@ -866,9 +941,9 @@ for (int i =0;i<C*R*S;i++)
 
 
 //    free(host_16_KCRS);
-//    free(host_test_add);
-//    free(second_test_add);
-
+    free(host_test_add);
+    free(second_test_add);
+    free(host_final_KCRS);
 
 
     free(in);

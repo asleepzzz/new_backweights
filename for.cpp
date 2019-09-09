@@ -405,10 +405,10 @@ void fconv_generate_span( unsigned int* p_span, const group_prop_t* p_prop, cons
 
 int main() {
 //dilation kernel =r*(k-1)+1
-    int N=16; int C=224;int H=4;int W=10;//in
+    int N=64; int C=224;int H=23;int W=17;//in
     int K=224;///out,carefully,you need to place correct size when stride and dilation
     int padh=0; int padw=0;//S for padw
-    int R =1;int S=7;//wei
+    int R =7;int S=1;//wei
     int strideH = 1; int strideW =1;
     int dilation_h =1;int dilation_w =1;
     int group_count =1;
@@ -448,16 +448,16 @@ int main() {
     for (int i=0;i<inSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
 
-         int j = (int)(r*100);
-         if (j<1) j=1;
+         int j = (int)(r*10);
+         if (j<1) j=(int)(i%10);
          in[i] = 1.0f*j;//r;
          printf("input %d is %f \n",i,in[i]);
     }
 
     for (int i=0;i<outSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
-         int j = (int)(r*100);
-         if (j<1) j=1;
+         int j = (int)(r*10);
+         if (j<1) j=(int)(i%10);
          out[i] = 1.0f*j;//r;
          printf("output %d is %f \n",i,out[i]);
     }
@@ -468,11 +468,11 @@ int main() {
     }
 
 
-    cpu_backward_weights(in,out,wei
-        ,N,C,H,W,
-        K,R,S,
-        outH,outW,strideH,strideW,
-        dilation_h,dilation_w);
+//    cpu_backward_weights(in,out,wei
+//        ,N,C,H,W,
+//        K,R,S,
+//        outH,outW,strideH,strideW,
+//        dilation_h,dilation_w);
 
 
 
@@ -803,9 +803,9 @@ for (int i =0;i<C*R*S;i++)
     }
 
     //compare
-    //compare(wei,dwei_gpu,K, C, R, S,1);
+//    compare(wei,dwei_gpu,K, C, R, S,1);
 
-    std::cout<<std::endl;
+//    std::cout<<std::endl;
 
 
 
@@ -915,7 +915,7 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-    compare(wei,host_final_KCRS,K, C, R, S,0);
+//    compare(wei,host_final_KCRS,K, C, R, S,0);
 
     std::cout<<std::endl;
 

@@ -317,7 +317,7 @@ void calculateMNOffsetIndex(int* mnOffset,int BLOCKS_PER_K, int Global_Size)
 
 }
 
-void fconv_generate_auxbuf( unsigned int* indices, const group_prop_t* p_prop, const unsigned int* strides, unsigned int ntidx,unsigned int ng )
+void fconv_generate_auxbuf( unsigned int* indices, const group_prop_t* p_prop, const unsigned int* strides, unsigned int ntidx )
 {
     unsigned int snx, sny, snz, onx, ony, onz,onc, inc, bat, su, sv, sd, nvalid, npix, pix, uv, i, tid,isafe;
     snx=p_prop->pnx;
@@ -342,10 +342,10 @@ void fconv_generate_auxbuf( unsigned int* indices, const group_prop_t* p_prop, c
     nvalid=bat*npix;
 printf("nvalid %u \n",nvalid);
     unsigned int istr  = inc*sny ; //inc*sny
-    unsigned int ostr  = ng*onc*onx*ony*onz ; //onc*npx
+    unsigned int ostr  = onc*onx*ony*onz ; //onc*npx
 
     for(int i=0; i<ntidx; ++i ){
-        isafe=i<nvalid?i:(nvalid-1);
+        isafe=i<nvalid?i:0;
         unsigned int ibt=isafe/npix;//small n
         pix=isafe%npix;
         unsigned int y=pix/onx;
@@ -468,11 +468,11 @@ int main() {
     }
 
 
-//    cpu_backward_weights(in,out,wei
-//        ,N,C,H,W,
-//        K,R,S,
-//        outH,outW,strideH,strideW,
-//        dilation_h,dilation_w);
+    cpu_backward_weights(in,out,wei
+        ,N,C,H,W,
+        K,R,S,
+        outH,outW,strideH,strideW,
+        dilation_h,dilation_w);
 
 
 
@@ -521,11 +521,12 @@ temp=(unsigned char *)malloc(1u<<28);
 
 
 int NOO_64 = ((N*outH*outW+63)/64);
+int NOO_256 = ((N*outH*outW+255)/256);
 int CRS_8 =(C*R*S+7)/8;
-int ntidx = NOO_64*64;
+int ntidx = NOO_256*256;//you need to read next 16 NOO,and you have 16 split ,it's 16*16=256
 int nb_amap = ntidx*4;
 int nb_span = (CRS_8*8+32)*4;
-fconv_generate_auxbuf(  (unsigned int*)(&temp[0]), gprop, strides, ntidx, 1 );
+fconv_generate_auxbuf(  (unsigned int*)(&temp[0]), gprop, strides, ntidx  );
 //*4 is address *2 is 2 auxbuf
 fconv_generate_span( (unsigned int*)&temp[nb_amap*2], gprop, strides, 0 );
     
@@ -915,7 +916,7 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-//    compare(wei,host_final_KCRS,K, C, R, S,0);
+    compare(wei,host_final_KCRS,K, C, R, S,0);
 
     std::cout<<std::endl;
 

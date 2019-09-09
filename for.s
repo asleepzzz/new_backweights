@@ -107,9 +107,15 @@ back_weights:
 .set sgpr_KCRS_ok,73
 .set sgpr_LDS_switch_offset,74
 .set sgpr_Loop_NOO_start,75;//don't use sgpr_NOO_real_idx to judge due to you need all wave when FMA(maybe can try sgpr_NOO_real_idx after....) 
+
+.set sgpr_auxbuf_A_buf2, 76;//76 77 78 79
+.set sgpr_auxbuf_B_buf2, 80;//80 81 82 83
+
+
 ;//sgpr
 
 .set vgpr_CRS_value,1
+.set vgpr_global_CRS_id_address,3
 ;//v2 for 0 0...0|32 32..32|64 64..64|96 96..96
 .set vgpr_wave_tid,49;//don't use v2 ,it has another purpose
 
@@ -255,9 +261,9 @@ back_weights:
 
     s_mul_i32 s[sgpr_NKOO_1_address],s[sgpr_NOO],s[sgpr_K]
     s_lshl_b32  s[sgpr_NKOO_1_address], s[sgpr_NKOO_1_address],2
-    v_lshlrev_b32 v3, 2, v[vgpr_wave_tid];//0 4 8...252|0 4 8...252|0 4 8...252|0 4 8...252
+    v_lshlrev_b32 v[vgpr_global_CRS_id_address], 2, v[vgpr_wave_tid];//0 4 8...252|0 4 8...252|0 4 8...252|0 4 8...252
     v_mov_b32 v9,s[sgpr_CRS_64]
-    v_lshl_add_u32 v3,v9,8,v3;//global crs id*4 = crs id*256+wave tid*4
+    v_lshl_add_u32 v[vgpr_global_CRS_id_address],v9,8,v[vgpr_global_CRS_id_address];//global crs id*4 = crs id*256+wave tid*4
 
 
 
@@ -307,7 +313,7 @@ A_read_not_out_of_bound:
     s_lshl_b32    s[sgpr_CRS_1_address], s[sgpr_CRS], 2 
     s_mov_b32 s[sgpr_buf_crs_address+2],s[sgpr_CRS_1_address]
     s_mov_b32 s[sgpr_buf_crs_address+3], Srd127_96
-    buffer_load_dword v[vgpr_CRS_value], v3, s[sgpr_buf_crs_address:sgpr_buf_crs_address+3], 0, offen offset:0
+    buffer_load_dword v[vgpr_CRS_value], v[vgpr_global_CRS_id_address], s[sgpr_buf_crs_address:sgpr_buf_crs_address+3], 0, offen offset:0
 
     s_waitcnt vmcnt(0);
 
@@ -531,6 +537,14 @@ first_write_B_to_lds:
 
     s_waitcnt     lgkmcnt(0)
 
+
+;//you should move more ,but now just test
+    s_add_u32 s[sgpr_NOO_start_address_split],s[sgpr_NOO_start_address_split],128
+    s_load_dwordx8 s[sgpr_auxbuf_8:sgpr_auxbuf_8+7], s[sgpr_matrixK_NOO_address:sgpr_matrixK_NOO_address+1], s[sgpr_NOO_start_address_split]
+
+
+
+
     s_mov_b32 s[sgpr_Loop_NOO_start],0;//if first wave still > sgpr_NOO_16,it should stop
 
 
@@ -569,26 +583,42 @@ LOOP_A_wave_read_out_of_bound:;//we assume NOO is factor of 4,I don't want to ha
     v_mov_b32 v[vgpr_A_value_4+2],0.0
     v_mov_b32 v[vgpr_A_value_4+3],0.0
 ;//prevent out of bound,but you should not use these auxbuf
-    s_mov_b32 s[sgpr_auxbuf_8],0
-    s_mov_b32 s[sgpr_auxbuf_8+1],0
-    s_mov_b32 s[sgpr_auxbuf_8+2],0
-    s_mov_b32 s[sgpr_auxbuf_8+3],0
-    s_mov_b32 s[sgpr_auxbuf_8+4],0
-    s_mov_b32 s[sgpr_auxbuf_8+5],0
-    s_mov_b32 s[sgpr_auxbuf_8+6],0
-    s_mov_b32 s[sgpr_auxbuf_8+7],0
+    s_mov_b32 s[sgpr_auxbuf_A_buf2],0
+    s_mov_b32 s[sgpr_auxbuf_A_buf2+1],0
+    s_mov_b32 s[sgpr_auxbuf_A_buf2+2],0
+    s_mov_b32 s[sgpr_auxbuf_A_buf2+3],0
+    s_mov_b32 s[sgpr_auxbuf_B_buf2],0
+    s_mov_b32 s[sgpr_auxbuf_B_buf2+1],0
+    s_mov_b32 s[sgpr_auxbuf_B_buf2+2],0
+    s_mov_b32 s[sgpr_auxbuf_B_buf2+3],0
 
     s_mov_b32 s[sgpr_NOO_out_of_bound_status],1
     s_branch LOOP_write_A_to_lds
 
 LOOP_A_read_not_out_of_bound:
     ;//already add s[sgpr_wave_NOO_offset] ,just add 36 due to 16*2*4 in auxbuf
-    s_add_u32 s[sgpr_NOO_start_address_split],s[sgpr_NOO_start_address_split],128
-    s_load_dwordx8 s[sgpr_auxbuf_8:sgpr_auxbuf_8+7], s[sgpr_matrixK_NOO_address:sgpr_matrixK_NOO_address+1], s[sgpr_NOO_start_address_split]
+    ;s_add_u32 s[sgpr_NOO_start_address_split],s[sgpr_NOO_start_address_split],128
+    ;s_load_dwordx8 s[sgpr_auxbuf_8:sgpr_auxbuf_8+7], s[sgpr_matrixK_NOO_address:sgpr_matrixK_NOO_address+1], s[sgpr_NOO_start_address_split]
 
     s_mov_b32 s[sgpr_NOO_out_of_bound_status],0
 
     s_waitcnt     lgkmcnt(0)
+
+    s_mov_b32 s[sgpr_auxbuf_A_buf2],s[sgpr_auxbuf_8]
+    s_mov_b32 s[sgpr_auxbuf_B_buf2],s[sgpr_auxbuf_8+1]
+    s_mov_b32 s[sgpr_auxbuf_A_buf2+1],s[sgpr_auxbuf_8+2]
+    s_mov_b32 s[sgpr_auxbuf_B_buf2+1],s[sgpr_auxbuf_8+3]
+    s_mov_b32 s[sgpr_auxbuf_A_buf2+2],s[sgpr_auxbuf_8+4]
+    s_mov_b32 s[sgpr_auxbuf_B_buf2+2],s[sgpr_auxbuf_8+5]
+    s_mov_b32 s[sgpr_auxbuf_A_buf2+3],s[sgpr_auxbuf_8+6]
+    s_mov_b32 s[sgpr_auxbuf_B_buf2+3],s[sgpr_auxbuf_8+7]
+
+;//read next
+    s_add_u32 s[sgpr_NOO_start_address_split],s[sgpr_NOO_start_address_split],128
+    s_load_dwordx8 s[sgpr_auxbuf_8:sgpr_auxbuf_8+7], s[sgpr_matrixK_NOO_address:sgpr_matrixK_NOO_address+1], s[sgpr_NOO_start_address_split]
+
+
+
 
 
     s_or_saveexec_b64 s[sgpr_before_cmp_address:sgpr_before_cmp_address+1],exec
@@ -602,31 +632,31 @@ LOOP_A_read_not_out_of_bound:
     s_lshl_b32    s[sgpr_CRS_1_address], s[sgpr_CRS], 2
     s_mov_b32 s[sgpr_buf_crs_address+2],s[sgpr_CRS_1_address]
     s_mov_b32 s[sgpr_buf_crs_address+3], Srd127_96
-    buffer_load_dword v[vgpr_CRS_value], v3, s[sgpr_buf_crs_address:sgpr_buf_crs_address+3], 0, offen offset:0
+    buffer_load_dword v[vgpr_CRS_value], v[vgpr_global_CRS_id_address], s[sgpr_buf_crs_address:sgpr_buf_crs_address+3], 0, offen offset:0
 
     s_waitcnt vmcnt(0);
 
 ;//CRS already read when first time ,just use it
-    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_8]
+    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_A_buf2]
     s_addc_u32    s[sgpr_buf_A_address+1], s[sgpr_matrixAB_address+1], 0
-    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_8]
+    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_A_buf2]
     s_mov_b32 s[sgpr_buf_A_address+3], Srd127_96
     buffer_load_dword v[vgpr_A_value_4], v[vgpr_CRS_value], s[sgpr_buf_A_address:sgpr_buf_A_address+3], 0, offen offset:0
 
-    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_8+2]
+    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_A_buf2+1]
     s_addc_u32    s[sgpr_buf_A_address+1], s[sgpr_matrixAB_address+1], 0
-    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_8+2]
+    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_A_buf2+1]
     buffer_load_dword v[vgpr_A_value_4+1], v[vgpr_CRS_value], s[sgpr_buf_A_address:sgpr_buf_A_address+3], 0, offen offset:0
 
 
-    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_8+4]
+    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_A_buf2+2]
     s_addc_u32    s[sgpr_buf_A_address+1], s[sgpr_matrixAB_address+1], 0
-    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_8+4]
+    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_A_buf2+2]
     buffer_load_dword v[vgpr_A_value_4+2], v[vgpr_CRS_value], s[sgpr_buf_A_address:sgpr_buf_A_address+3], 0, offen offset:0
 
-    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_8+6]
+    s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_A_buf2+3]
     s_addc_u32    s[sgpr_buf_A_address+1], s[sgpr_matrixAB_address+1], 0
-    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_8+6]
+    s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_A_buf2+3]
     buffer_load_dword v[vgpr_A_value_4+3], v[vgpr_CRS_value], s[sgpr_buf_A_address:sgpr_buf_A_address+3], 0, offen offset:0
 
 
@@ -706,12 +736,12 @@ LOOP_B_read_not_out_of_bound:
     v_cmpx_lt_u32 vcc, v[vgpr_global_k], s[sgpr_K]
 
 
-    s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_8+1]
+    s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_B_buf2]
     s_addc_u32    s[sgpr_buf_B_address+1], s[sgpr_matrixB_start_address+1], 0
-    s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_8+1]
+    s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_B_buf2]
     s_mov_b32 s[sgpr_buf_B_address+3], Srd127_96
 
-    s_sub_u32 s[sgpr_B_load_judge],s[sgpr_auxbuf_8+7],s[sgpr_auxbuf_8+1]
+    s_sub_u32 s[sgpr_B_load_judge],s[sgpr_auxbuf_B_buf2+3],s[sgpr_auxbuf_B_buf2]
 
 
 ;//need add
@@ -725,26 +755,26 @@ LOOP_B_read_not_out_of_bound:
 
 
 
-s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_8+3]
+s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_B_buf2+1]
 s_addc_u32    s[sgpr_buf_B_address+1], s[sgpr_matrixB_start_address+1], 0
-s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_8+3]
+s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_B_buf2+1]
 buffer_load_dword v[vgpr_B_value_4+1], v[vgpr_kOO], s[sgpr_buf_B_address:sgpr_buf_B_address+3], 0, offen offset:0
 
 
 
 
-s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_8+5]
+s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_B_buf2+2]
 s_addc_u32    s[sgpr_buf_B_address+1], s[sgpr_matrixB_start_address+1], 0
-s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_8+5]
+s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_B_buf2+2]
 buffer_load_dword v[vgpr_B_value_4+2], v[vgpr_kOO], s[sgpr_buf_B_address:sgpr_buf_B_address+3], 0, offen offset:0
 
 
 
 
 
-s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_8+7]
+s_add_u32     s[sgpr_buf_B_address], s[sgpr_matrixB_start_address], s[sgpr_auxbuf_B_buf2+3]
 s_addc_u32    s[sgpr_buf_B_address+1], s[sgpr_matrixB_start_address+1], 0
-s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_8+7]
+s_sub_u32 s[sgpr_buf_B_address+2],s[sgpr_NKOO_1_address],s[sgpr_auxbuf_B_buf2+3]
 buffer_load_dword v[vgpr_B_value_4+3], v[vgpr_kOO], s[sgpr_buf_B_address:sgpr_buf_B_address+3], 0, offen offset:0
 
 

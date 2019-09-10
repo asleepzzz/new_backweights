@@ -110,7 +110,8 @@ back_weights:
 
 .set sgpr_auxbuf_A_buf2, 76;//76 77 78 79
 .set sgpr_auxbuf_B_buf2, 80;//80 81 82 83
-
+.set sgpr_tmp_cmp_positive,84;//84 85
+;.set sgpr_tmp_cmp_inverse,86;//86 87
 
 ;//sgpr
 
@@ -304,7 +305,7 @@ A_read_not_out_of_bound:
 
     s_or_saveexec_b64 s[sgpr_before_cmp_address:sgpr_before_cmp_address+1],exec
     ;//if CRS out of bound ,do nothing
-    v_cmpx_lt_u32 vcc, v[vgpr_crs_global_id], s[sgpr_CRS]
+    v_cmpx_lt_u32 s[sgpr_tmp_cmp_positive:sgpr_tmp_cmp_positive+1], v[vgpr_crs_global_id], s[sgpr_CRS]
     
 
 
@@ -339,7 +340,6 @@ A_read_not_out_of_bound:
     s_addc_u32    s[sgpr_buf_A_address+1], s[sgpr_matrixAB_address+1], 0
     s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_8+6]
     buffer_load_dword v[vgpr_A_value_4+3], v[vgpr_CRS_value], s[sgpr_buf_A_address:sgpr_buf_A_address+3], 0, offen offset:0
-
 
 
     s_mov_b64 exec,s[sgpr_before_cmp_address:sgpr_before_cmp_address+1]
@@ -542,14 +542,11 @@ first_write_B_to_lds:
     s_add_u32 s[sgpr_NOO_start_address_split],s[sgpr_NOO_start_address_split],128
     s_load_dwordx8 s[sgpr_auxbuf_8:sgpr_auxbuf_8+7], s[sgpr_matrixK_NOO_address:sgpr_matrixK_NOO_address+1], s[sgpr_NOO_start_address_split]
 
-
-
-
     s_mov_b32 s[sgpr_Loop_NOO_start],0;//if first wave still > sgpr_NOO_16,it should stop
 
-
-
     v_xor_b32 v[vgpr_xor_control],v[vgpr_xor_control],0x1;//change to another set to load
+
+    s_barrier;//wait all ds write over before loop
 
 BIG_LOOP:
     s_add_u32 s[sgpr_Loop_NOO_start],s[sgpr_Loop_NOO_start],16
@@ -573,6 +570,12 @@ AB_LOAD_in_loop:
    ;//add 0 or 4096 for switch
     v_add_u32 v[vgpr_lds_A_offset],v[vgpr_block_thread_tile_y],v[vgpr_xor_control_offset_for_fma]
     v_add_u32 v[vgpr_lds_B_offset],v[vgpr_block_thread_tile_x],v[vgpr_xor_control_offset_for_fma]
+
+    s_waitcnt     lgkmcnt(0);//wait aux buf at first loop
+
+    ;//for FMA LOOP0
+    ds_read_b128  v[vgpr_thread_A_4:vgpr_thread_A_4+3], v[vgpr_lds_A_offset] offset:0
+    ds_read_b128  v[vgpr_thread_B_4:vgpr_thread_B_4+3],v[vgpr_lds_B_offset] offset:8192
 
 
 
@@ -608,10 +611,30 @@ LOOP_A_wave_read_out_of_bound:;//we assume NOO is factor of 4,I don't want to ha
     v_mov_b32 v[vgpr_B_value_4+2],0.0
     v_mov_b32 v[vgpr_B_value_4+3],0.0
 
-
-
-
     s_mov_b32 s[sgpr_NOO_out_of_bound_status],1
+
+
+    s_waitcnt     lgkmcnt(0)
+;//FMA LOOP0
+v_fmac_f32    v[vgpr_FMA_value], v[vgpr_thread_A_4], v[vgpr_thread_B_4]
+v_fmac_f32    v[vgpr_FMA_value+1],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4]
+v_fmac_f32    v[vgpr_FMA_value+2],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4]
+v_fmac_f32    v[vgpr_FMA_value+3],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4]
+v_fmac_f32    v[vgpr_FMA_value+4], v[vgpr_thread_A_4], v[vgpr_thread_B_4+1]
+v_fmac_f32    v[vgpr_FMA_value+5],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+1]
+v_fmac_f32    v[vgpr_FMA_value+6],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+1]
+v_fmac_f32    v[vgpr_FMA_value+7],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+1]
+v_fmac_f32    v[vgpr_FMA_value+8], v[vgpr_thread_A_4], v[vgpr_thread_B_4+2]
+v_fmac_f32    v[vgpr_FMA_value+9],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+2]
+v_fmac_f32    v[vgpr_FMA_value+10],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+2]
+v_fmac_f32    v[vgpr_FMA_value+11],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+2]
+v_fmac_f32    v[vgpr_FMA_value+12], v[vgpr_thread_A_4], v[vgpr_thread_B_4+3]
+v_fmac_f32    v[vgpr_FMA_value+13],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+3]
+v_fmac_f32    v[vgpr_FMA_value+14],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+3]
+v_fmac_f32    v[vgpr_FMA_value+15],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+3]
+
+
+
 
     s_branch LOOP_write_to_LDS
 
@@ -622,7 +645,6 @@ LOOP_A_read_not_out_of_bound:
 
     s_mov_b32 s[sgpr_NOO_out_of_bound_status],0
 
-    s_waitcnt     lgkmcnt(0)
 
     s_mov_b32 s[sgpr_auxbuf_A_buf2],s[sgpr_auxbuf_8]
     s_mov_b32 s[sgpr_auxbuf_B_buf2],s[sgpr_auxbuf_8+1]
@@ -633,9 +655,7 @@ LOOP_A_read_not_out_of_bound:
     s_mov_b32 s[sgpr_auxbuf_A_buf2+3],s[sgpr_auxbuf_8+6]
     s_mov_b32 s[sgpr_auxbuf_B_buf2+3],s[sgpr_auxbuf_8+7]
 
-;//read next
-    s_add_u32 s[sgpr_NOO_start_address_split],s[sgpr_NOO_start_address_split],128
-    s_load_dwordx8 s[sgpr_auxbuf_8:sgpr_auxbuf_8+7], s[sgpr_matrixK_NOO_address:sgpr_matrixK_NOO_address+1], s[sgpr_NOO_start_address_split]
+
 
 
 
@@ -643,18 +663,9 @@ LOOP_A_read_not_out_of_bound:
 
     s_or_saveexec_b64 s[sgpr_before_cmp_address:sgpr_before_cmp_address+1],exec
     ;//if CRS out of bound ,do nothing
-    v_cmpx_lt_u32 vcc, v[vgpr_crs_global_id], s[sgpr_CRS]
+    v_cmpx_lt_u32 s[sgpr_tmp_cmp_positive:sgpr_tmp_cmp_positive+1], v[vgpr_crs_global_id], s[sgpr_CRS]
 
-
-
-    s_mov_b32 s[sgpr_buf_crs_address],s[sgpr_span_address]
-    s_mov_b32 s[sgpr_buf_crs_address+1],s[sgpr_span_address+1]
-    s_lshl_b32    s[sgpr_CRS_1_address], s[sgpr_CRS], 2
-    s_mov_b32 s[sgpr_buf_crs_address+2],s[sgpr_CRS_1_address]
-    s_mov_b32 s[sgpr_buf_crs_address+3], Srd127_96
-    buffer_load_dword v[vgpr_CRS_value], v[vgpr_global_CRS_id_address], s[sgpr_buf_crs_address:sgpr_buf_crs_address+3], 0, offen offset:0
-
-    s_waitcnt vmcnt(0);
+A_CRS_ok:
 
 ;//CRS already read when first time ,just use it
     s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_A_buf2]
@@ -662,6 +673,28 @@ LOOP_A_read_not_out_of_bound:
     s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_A_buf2]
     s_mov_b32 s[sgpr_buf_A_address+3], Srd127_96
     buffer_load_dword v[vgpr_A_value_4], v[vgpr_CRS_value], s[sgpr_buf_A_address:sgpr_buf_A_address+3], 0, offen offset:0
+
+    s_waitcnt     lgkmcnt(0)
+    ;//FMA LOOP0
+    v_fmac_f32    v[vgpr_FMA_value], v[vgpr_thread_A_4], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+1],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+2],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+3],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+4], v[vgpr_thread_A_4], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+5],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+6],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+7],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+8], v[vgpr_thread_A_4], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+9],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+10],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+11],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+12], v[vgpr_thread_A_4], v[vgpr_thread_B_4+3]
+    v_fmac_f32    v[vgpr_FMA_value+13],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+3]
+    v_fmac_f32    v[vgpr_FMA_value+14],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+3]
+    v_fmac_f32    v[vgpr_FMA_value+15],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+3]
+
+
+
 
     s_add_u32     s[sgpr_buf_A_address], s[sgpr_matrixAB_address], s[sgpr_auxbuf_A_buf2+1]
     s_addc_u32    s[sgpr_buf_A_address+1], s[sgpr_matrixAB_address+1], 0
@@ -678,6 +711,32 @@ LOOP_A_read_not_out_of_bound:
     s_addc_u32    s[sgpr_buf_A_address+1], s[sgpr_matrixAB_address+1], 0
     s_sub_u32 s[sgpr_buf_A_address+2],s[sgpr_NCHW_1_address],s[sgpr_auxbuf_A_buf2+3]
     buffer_load_dword v[vgpr_A_value_4+3], v[vgpr_CRS_value], s[sgpr_buf_A_address:sgpr_buf_A_address+3], 0, offen offset:0
+
+
+
+
+    s_nor_saveexec_b64 exec,s[sgpr_tmp_cmp_positive:sgpr_tmp_cmp_positive+1]
+A_CRS_over_bound:
+
+
+    s_waitcnt     lgkmcnt(0)
+    ;//FMA LOOP0
+    v_fmac_f32    v[vgpr_FMA_value], v[vgpr_thread_A_4], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+1],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+2],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+3],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4]
+    v_fmac_f32    v[vgpr_FMA_value+4], v[vgpr_thread_A_4], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+5],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+6],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+7],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+1]
+    v_fmac_f32    v[vgpr_FMA_value+8], v[vgpr_thread_A_4], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+9],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+10],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+11],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+2]
+    v_fmac_f32    v[vgpr_FMA_value+12], v[vgpr_thread_A_4], v[vgpr_thread_B_4+3]
+    v_fmac_f32    v[vgpr_FMA_value+13],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+3]
+    v_fmac_f32    v[vgpr_FMA_value+14],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+3]
+    v_fmac_f32    v[vgpr_FMA_value+15],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+3]
 
 
 
@@ -774,6 +833,10 @@ LOOP_write_to_LDS:
 
     s_mov_b64 exec,s[sgpr_before_cmp_address:sgpr_before_cmp_address+1];//for B_read_not_out_of_bound
 
+;//read next
+    s_add_u32 s[sgpr_NOO_start_address_split],s[sgpr_NOO_start_address_split],128
+    s_load_dwordx8 s[sgpr_auxbuf_8:sgpr_auxbuf_8+7], s[sgpr_matrixK_NOO_address:sgpr_matrixK_NOO_address+1], s[sgpr_NOO_start_address_split]
+
 
 
 
@@ -810,7 +873,7 @@ LOOP_write_A_to_lds:
     ds_write_b32  v10, v[vgpr_A_value_4+1] offset:256
     ds_write_b32  v10, v[vgpr_A_value_4+2] offset:512
     ds_write_b32  v10, v[vgpr_A_value_4+3] offset:768
-    s_waitcnt     lgkmcnt(0)
+;    s_waitcnt     lgkmcnt(0)
 
 
 
@@ -818,7 +881,7 @@ LOOP_write_A_to_lds:
 LOOP_write_B_to_lds:
 
 
-    s_waitcnt vmcnt(0)
+;    s_waitcnt vmcnt(0)
 
 
 ;//[NOO][64] store to lds,store right
@@ -893,29 +956,6 @@ FMA_do:
 
     s_barrier;
  
-    ds_read_b128  v[vgpr_thread_A_4:vgpr_thread_A_4+3], v[vgpr_lds_A_offset] offset:0
-    ds_read_b128  v[vgpr_thread_B_4:vgpr_thread_B_4+3],v[vgpr_lds_B_offset] offset:8192
-
-    s_waitcnt     lgkmcnt(0)
-
-v_fmac_f32    v[vgpr_FMA_value], v[vgpr_thread_A_4], v[vgpr_thread_B_4]
-v_fmac_f32    v[vgpr_FMA_value+1],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4]
-v_fmac_f32    v[vgpr_FMA_value+2],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4]
-v_fmac_f32    v[vgpr_FMA_value+3],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4]
-v_fmac_f32    v[vgpr_FMA_value+4], v[vgpr_thread_A_4], v[vgpr_thread_B_4+1]
-v_fmac_f32    v[vgpr_FMA_value+5],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+1]
-v_fmac_f32    v[vgpr_FMA_value+6],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+1]
-v_fmac_f32    v[vgpr_FMA_value+7],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+1]
-v_fmac_f32    v[vgpr_FMA_value+8], v[vgpr_thread_A_4], v[vgpr_thread_B_4+2]
-v_fmac_f32    v[vgpr_FMA_value+9],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+2]
-v_fmac_f32    v[vgpr_FMA_value+10],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+2]
-v_fmac_f32    v[vgpr_FMA_value+11],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+2]
-v_fmac_f32    v[vgpr_FMA_value+12], v[vgpr_thread_A_4], v[vgpr_thread_B_4+3]
-v_fmac_f32    v[vgpr_FMA_value+13],v[vgpr_thread_A_4+1], v[vgpr_thread_B_4+3]
-v_fmac_f32    v[vgpr_FMA_value+14],v[vgpr_thread_A_4+2], v[vgpr_thread_B_4+3]
-v_fmac_f32    v[vgpr_FMA_value+15],v[vgpr_thread_A_4+3], v[vgpr_thread_B_4+3]
-
-
 
 ;both LDS A and B [NOO][64],so you just +64*4,you can jump to next NOO
 ;//NOO LOOP 1

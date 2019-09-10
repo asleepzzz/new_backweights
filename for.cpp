@@ -806,7 +806,7 @@ for (int i =0;i<C*R*S;i++)
     //compare
 //    compare(wei,dwei_gpu,K, C, R, S,1);
 
-//    std::cout<<std::endl;
+    std::cout<<std::endl;
 
 
 

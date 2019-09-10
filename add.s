@@ -14,9 +14,9 @@ split_add:
                 user_sgpr_count = 2
                 kernarg_segment_byte_size = 100
                 kernel_code_entry_byte_offset = 256
-                granulated_wavefront_sgpr_count = 11;(s+3)+8-1/8-1
+                granulated_wavefront_sgpr_count = 2;(s+3)+8-1/8-1
                 granulated_workitem_vgpr_count = 15;(v+4-1)/4-1
-                wavefront_sgpr_count = 96;sgpr+3
+                wavefront_sgpr_count = 24;sgpr+3
                 workitem_vgpr_count = 64
                 workgroup_group_segment_byte_size = 32768;//LDS size
                 enable_sgpr_workgroup_id_x = 1;s2
@@ -43,26 +43,45 @@ split_add:
 
 .set sgpr_KCRS,8
 .set sgpr_CRS,9
-.set sgpr_kcrs_tmp,10
-.set sgpr_block_start_offset,16
-
-
-;//9 not use
 .set sgpr_block_start_address,10;//10 11
 .set sgpr_load_address,12 ;//12 13 14 15
+
+.set sgpr_block_start_offset,16
 .set Srd127_96, 0x0020000
 
+.set sgpr_kcrs_tmp,17
+.set sgpr_kcrs_x4,18
+;.set sgpr_write_limit,19
+.set sgpr_write_address,20;//20 21 22 23
 
 .set vgpr_k_local_idx,1
 .set vgpr_crs_local_idx,2
-.set vgpr_start_addrerss,3
+.set vgpr_total_local_offset,3
 .set vgpr_k_local_offset,4
-
+.set vgpr_write_local_offset,5
 
 .set vgpr_1_last,8;//8 9 10 11
-;.set vgpr_1_tmp2,8
-;.set vgpr_1_tmp3,12
-;.set vgpr_1_tmp4,16
+.set vgpr_1_tmp1,12;//12 13 14 15
+.set vgpr_1_tmp2,16
+.set vgpr_1_tmp3,20
+
+.set vgpr_2_last,24;
+.set vgpr_2_tmp1,28;
+.set vgpr_2_tmp2,32
+.set vgpr_2_tmp3,36
+
+.set vgpr_3_last,40;
+.set vgpr_3_tmp1,44;
+.set vgpr_3_tmp2,48
+.set vgpr_3_tmp3,52
+
+
+.set vgpr_4_last,56;
+.set vgpr_4_tmp1,60;
+.set vgpr_4_tmp2,12
+.set vgpr_4_tmp3,16
+
+
 
 ;.set vgpr_2_last,8
 ;        8 K
@@ -101,21 +120,28 @@ split_add:
     s_load_dwordx4 s[sgpr_Matrix_address:sgpr_Matrix_address+3],s[0:1],0x00;//
     s_load_dwordx2   s[sgpr_KCRS:sgpr_CRS],s[0:1],0x10
 
-    s_lshl_b32  s[sgpr_block_start_offset], s[sgpr_K_8], 5;//8*4
-    s_mul_i32 s[sgpr_block_start_offset], s[sgpr_block_start_offset], s[sgpr_CRS];//8*4*CRS
-    s_lshl_b32 s[sgpr_kcrs_tmp], s[sgpr_CRS_32],7;//32*4
-    s_add_u32 s[sgpr_block_start_offset], s[sgpr_block_start_offset],s[sgpr_kcrs_tmp];//crs_32*32*4+k_8*8*CRS*4
+
 
     v_lshrrev_b32  v[vgpr_k_local_idx], 3,v0;// v0/8
     v_and_b32 v[vgpr_crs_local_idx],v0,7;//x=v0%8
     v_lshlrev_b32 v[vgpr_crs_local_idx],2,v[vgpr_crs_local_idx]
 
-    v_lshlrev_b32 v[vgpr_k_local_offset],2,v[vgpr_k_local_idx]   ;//k*CRS*4
-    ;v_mul_lo_u32 v[vgpr_k_local_offset], s[sgpr_CRS], v[vgpr_k_local_offset]
-
-    v_lshl_add_u32 v[vgpr_start_addrerss],v[vgpr_crs_local_idx],2,v[vgpr_k_local_offset];//
-
     s_waitcnt     lgkmcnt(0)
+
+    s_lshl_b32 s[sgpr_kcrs_x4],s[sgpr_KCRS],2
+    s_lshl_b32  s[sgpr_block_start_offset], s[sgpr_K_8], 5;//8*CRS*4
+    s_mul_i32 s[sgpr_block_start_offset], s[sgpr_block_start_offset], s[sgpr_CRS]
+
+    s_lshl_b32 s[sgpr_kcrs_tmp], s[sgpr_CRS_32],7;//32*4
+    s_add_u32 s[sgpr_block_start_offset], s[sgpr_block_start_offset],s[sgpr_kcrs_tmp];//k_8*8*CRS*4+crs_32*32*4    
+
+
+    v_lshlrev_b32 v[vgpr_k_local_offset],2,v[vgpr_k_local_idx]   ;//k*CRS*4
+    v_mul_lo_u32 v[vgpr_k_local_offset],v[vgpr_k_local_offset],s[sgpr_CRS]
+    v_lshl_add_u32 v[vgpr_total_local_offset],v[vgpr_crs_local_idx],2,v[vgpr_k_local_offset];//
+
+
+
 
 ;//block 0 -15 this is block 0
     s_add_u32     s[sgpr_block_start_address], s[sgpr_Matrix_address], s[sgpr_block_start_offset]
@@ -123,31 +149,210 @@ split_add:
 
     s_mov_b32 s[sgpr_load_address+0],s[sgpr_block_start_address]
     s_mov_b32 s[sgpr_load_address+1],s[sgpr_block_start_address+1]
-    s_mov_b32 s[sgpr_load_address+2],8*32*4
+
+
+    s_add_u32 s[sgpr_write_address], s[sgpr_final_Matrix_address], s[sgpr_block_start_offset]
+    s_addc_u32 s[sgpr_write_address+1], s[sgpr_final_Matrix_address+1],0
+
+
+    ;//CRS*7*4+32*4
+    s_mul_i32 s[sgpr_load_address+2],s[sgpr_CRS],28
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],128
+    ;s_mov_b32 s[sgpr_load_address+2],0x800000
     s_mov_b32 s[sgpr_load_address+3], Srd127_96
-    buffer_load_dwordx4 v[vgpr_1_last:vgpr_1_last+3], v[vgpr_start_addrerss], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+    buffer_load_dwordx4 v[vgpr_1_last:vgpr_1_last+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_mov_b32 v[vgpr_write_local_offset],v[vgpr_total_local_offset];//save offset ,use when write
+    s_mov_b32 s[sgpr_write_address+2],s[sgpr_load_address+2];//save limit ,use when write
+    s_mov_b32 s[sgpr_write_address+3], Srd127_96
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_1_tmp1:vgpr_1_tmp1+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_1_tmp2:vgpr_1_tmp2+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+ 
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_1_tmp3:vgpr_1_tmp3+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+ 
+
+    s_waitcnt vmcnt(0);
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_2_last:vgpr_2_last+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_2_tmp1:vgpr_2_tmp1+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_2_tmp2:vgpr_2_tmp2+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_2_tmp3:vgpr_2_tmp3+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+
+    ;s_waitcnt vmcnt(0);
+
+    v_add_f32 v[vgpr_1_last],v[vgpr_1_last],v[vgpr_1_tmp1]
+    v_add_f32 v[vgpr_1_last+1],v[vgpr_1_last+1],v[vgpr_1_tmp1+1]
+    v_add_f32 v[vgpr_1_last+2],v[vgpr_1_last+2],v[vgpr_1_tmp1+2]
+    v_add_f32 v[vgpr_1_last+3],v[vgpr_1_last+3],v[vgpr_1_tmp1+3]
+
+
+    v_add_f32 v[vgpr_1_last],v[vgpr_1_last],v[vgpr_1_tmp2]
+    v_add_f32 v[vgpr_1_last+1],v[vgpr_1_last+1],v[vgpr_1_tmp2+1]
+    v_add_f32 v[vgpr_1_last+2],v[vgpr_1_last+2],v[vgpr_1_tmp2+2]
+    v_add_f32 v[vgpr_1_last+3],v[vgpr_1_last+3],v[vgpr_1_tmp2+3]
+
+
+    v_add_f32 v[vgpr_1_last],v[vgpr_1_last],v[vgpr_1_tmp3]
+    v_add_f32 v[vgpr_1_last+1],v[vgpr_1_last+1],v[vgpr_1_tmp3+1]
+    v_add_f32 v[vgpr_1_last+2],v[vgpr_1_last+2],v[vgpr_1_tmp3+2]
+    v_add_f32 v[vgpr_1_last+3],v[vgpr_1_last+3],v[vgpr_1_tmp3+3]
+
+    s_waitcnt vmcnt(0);
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_3_last:vgpr_3_last+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_3_tmp1:vgpr_3_tmp1+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_3_tmp2:vgpr_3_tmp2+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_3_tmp3:vgpr_3_tmp3+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+
+
+    v_add_f32 v[vgpr_2_last],v[vgpr_2_last],v[vgpr_2_tmp1]
+    v_add_f32 v[vgpr_2_last+1],v[vgpr_2_last+1],v[vgpr_2_tmp1+1]
+    v_add_f32 v[vgpr_2_last+2],v[vgpr_2_last+2],v[vgpr_2_tmp1+2]
+    v_add_f32 v[vgpr_2_last+3],v[vgpr_2_last+3],v[vgpr_2_tmp1+3]
+
+
+    v_add_f32 v[vgpr_2_last],v[vgpr_2_last],v[vgpr_2_tmp2]
+    v_add_f32 v[vgpr_2_last+1],v[vgpr_2_last+1],v[vgpr_2_tmp2+1]
+    v_add_f32 v[vgpr_2_last+2],v[vgpr_2_last+2],v[vgpr_2_tmp2+2]
+    v_add_f32 v[vgpr_2_last+3],v[vgpr_2_last+3],v[vgpr_2_tmp2+3]
+
+
+    v_add_f32 v[vgpr_2_last],v[vgpr_2_last],v[vgpr_2_tmp3]
+    v_add_f32 v[vgpr_2_last+1],v[vgpr_2_last+1],v[vgpr_2_tmp3+1]
+    v_add_f32 v[vgpr_2_last+2],v[vgpr_2_last+2],v[vgpr_2_tmp3+2]
+    v_add_f32 v[vgpr_2_last+3],v[vgpr_2_last+3],v[vgpr_2_tmp3+3]
+
+    s_waitcnt vmcnt(0);
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_4_last:vgpr_4_last+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_4_tmp1:vgpr_4_tmp1+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_4_tmp2:vgpr_4_tmp2+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+    v_add_u32 v[vgpr_total_local_offset],v[vgpr_total_local_offset],s[sgpr_kcrs_x4]
+    s_add_u32 s[sgpr_load_address+2],s[sgpr_load_address+2],s[sgpr_kcrs_x4]
+    buffer_load_dwordx4 v[vgpr_4_tmp3:vgpr_4_tmp3+3], v[vgpr_total_local_offset], s[sgpr_load_address:sgpr_load_address+3], 0, offen offset:0
+
+
+
+
+
+    v_add_f32 v[vgpr_3_last],v[vgpr_3_last],v[vgpr_3_tmp1]
+    v_add_f32 v[vgpr_3_last+1],v[vgpr_3_last+1],v[vgpr_3_tmp1+1]
+    v_add_f32 v[vgpr_3_last+2],v[vgpr_3_last+2],v[vgpr_3_tmp1+2]
+    v_add_f32 v[vgpr_3_last+3],v[vgpr_3_last+3],v[vgpr_3_tmp1+3]
+
+
+    v_add_f32 v[vgpr_3_last],v[vgpr_3_last],v[vgpr_3_tmp2]
+    v_add_f32 v[vgpr_3_last+1],v[vgpr_3_last+1],v[vgpr_3_tmp2+1]
+    v_add_f32 v[vgpr_3_last+2],v[vgpr_3_last+2],v[vgpr_3_tmp2+2]
+    v_add_f32 v[vgpr_3_last+3],v[vgpr_3_last+3],v[vgpr_3_tmp2+3]
+
+
+    v_add_f32 v[vgpr_3_last],v[vgpr_3_last],v[vgpr_3_tmp3]
+    v_add_f32 v[vgpr_3_last+1],v[vgpr_3_last+1],v[vgpr_3_tmp3+1]
+    v_add_f32 v[vgpr_3_last+2],v[vgpr_3_last+2],v[vgpr_3_tmp3+2]
+    v_add_f32 v[vgpr_3_last+3],v[vgpr_3_last+3],v[vgpr_3_tmp3+3]
+
 
     s_waitcnt vmcnt(0);
 
 
+    v_add_f32 v[vgpr_4_last],v[vgpr_4_last],v[vgpr_4_tmp1]
+    v_add_f32 v[vgpr_4_last+1],v[vgpr_4_last+1],v[vgpr_4_tmp1+1]
+    v_add_f32 v[vgpr_4_last+2],v[vgpr_4_last+2],v[vgpr_4_tmp1+2]
+    v_add_f32 v[vgpr_4_last+3],v[vgpr_4_last+3],v[vgpr_4_tmp1+3]
 
-s_cmp_eq_u32  s[sgpr_CRS_32], 0
-s_cbranch_scc0 xxxx
+
+    v_add_f32 v[vgpr_4_last],v[vgpr_4_last],v[vgpr_4_tmp2]
+    v_add_f32 v[vgpr_4_last+1],v[vgpr_4_last+1],v[vgpr_4_tmp2+1]
+    v_add_f32 v[vgpr_4_last+2],v[vgpr_4_last+2],v[vgpr_4_tmp2+2]
+    v_add_f32 v[vgpr_4_last+3],v[vgpr_4_last+3],v[vgpr_4_tmp2+3]
 
 
-       s_load_dwordx2 s[36:37], s[0:1], 0x20
-       s_waitcnt     lgkmcnt(0) vmcnt(0)
-       v_lshlrev_b32 v60, 2, v0
-       v_mov_b32 v63,s[sgpr_CRS]
-       ;v_mov_b32 v63,11
-       global_store_dword  v[60:61], v[vgpr_k_local_offset], s[36:37]
-;//v[vgpr_lds_A_offset]
-;global_store_dword  v[124:125], v[vgpr_FMA_value], s[36:37]
-;global_store_dword  v[124:125], v[vgpr_lds_A_offset], s[36:37]
-;global_store_dword  v[124:125], v[vgpr_thread_A_4], s[36:37]
-       s_waitcnt     vmcnt(0)
+    v_add_f32 v[vgpr_4_last],v[vgpr_4_last],v[vgpr_4_tmp3]
+    v_add_f32 v[vgpr_4_last+1],v[vgpr_4_last+1],v[vgpr_4_tmp3+1]
+    v_add_f32 v[vgpr_4_last+2],v[vgpr_4_last+2],v[vgpr_4_tmp3+2]
+    v_add_f32 v[vgpr_4_last+3],v[vgpr_4_last+3],v[vgpr_4_tmp3+3]
+
+
+
+
+    v_add_f32 v[vgpr_1_last],v[vgpr_1_last],v[vgpr_2_last]
+    v_add_f32 v[vgpr_1_last+1],v[vgpr_1_last+1],v[vgpr_2_last+1]
+    v_add_f32 v[vgpr_1_last+2],v[vgpr_1_last+2],v[vgpr_2_last+2]
+    v_add_f32 v[vgpr_1_last+3],v[vgpr_1_last+3],v[vgpr_2_last+3]
+
+
+    v_add_f32 v[vgpr_3_last],v[vgpr_3_last],v[vgpr_4_last]
+    v_add_f32 v[vgpr_3_last+1],v[vgpr_3_last+1],v[vgpr_4_last+1]
+    v_add_f32 v[vgpr_3_last+2],v[vgpr_3_last+2],v[vgpr_4_last+2]
+    v_add_f32 v[vgpr_3_last+3],v[vgpr_3_last+3],v[vgpr_4_last+3]
+
+
+    v_add_f32 v[vgpr_1_last],v[vgpr_1_last],v[vgpr_3_last]
+    v_add_f32 v[vgpr_1_last+1],v[vgpr_1_last+1],v[vgpr_3_last+1]
+    v_add_f32 v[vgpr_1_last+2],v[vgpr_1_last+2],v[vgpr_3_last+2]
+    v_add_f32 v[vgpr_1_last+3],v[vgpr_1_last+3],v[vgpr_3_last+3]
+
+
+
+
+    buffer_store_dwordx4 v[vgpr_1_last:vgpr_1_last+3], v[vgpr_write_local_offset], s[sgpr_write_address:sgpr_write_address+3], 0, offen offset:0
+    s_waitcnt     vmcnt(0)
+
+;s_cmp_eq_u32  s[sgpr_CRS_32], 0
+;s_cbranch_scc0 xxxx
+
+
+;       s_load_dwordx2 s[36:37], s[0:1], 0x08
+;       s_waitcnt     lgkmcnt(0) vmcnt(0)
+;       v_lshlrev_b32 v4, 2, v0
+;       v_mov_b32 v63,s[sgpr_kcrs_x4]
+;       v_mov_b32 v63,11
+;       global_store_dword  v[4:5], v[vgpr_1_last], s[36:37]
+;       s_waitcnt     vmcnt(0)
         ;//kevin end
-xxxx:
+;xxxx:
 
 
 

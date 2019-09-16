@@ -4,6 +4,14 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 
+
+//#define DEBUG 1
+//#ifdef DEBUG
+//    #define DEBUG_PRINT printf
+//#else
+    #define DEBUG_PRINT(...)
+//#endif
+
 constexpr unsigned x = 16;
 #define HIP_ASSERT(x) (assert((x)==hipSuccess))
 
@@ -85,12 +93,6 @@ int computeWeiIndex(int g,int i, int j, int k,int l,int weiN,int weiC,int weiH,i
     return (g*(weiN/group_count)+i)*(weiC/group_count)*weiH*weiW+j*weiH*weiW+k*weiW+l;
 }
 
-void compareABOffset(unsigned int* cpu,unsigned int* gpu)
-{
-//size: block*256
-    //for (int i =)
-}
-
 
 void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int combine)
 {
@@ -113,7 +115,7 @@ void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int comb
                                 tmp+=hip[index+u*weiN*weiC*weiH*weiW];
                                 if (index==0)
                                 {
-                                    printf("16 combine %d  index %d is %f\n",u,index+u*weiN*weiC*weiH*weiW,hip[index+u*weiN*weiC*weiH*weiW]);
+                                    DEBUG_PRINT("16 combine %d  index %d is %f\n",u,index+u*weiN*weiC*weiH*weiW,hip[index+u*weiN*weiC*weiH*weiW]);
                                 }
                             
                             }
@@ -123,9 +125,9 @@ void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int comb
 
                         if (cpu[index]!=tmp)
                         {
-                            printf("not queal %f %f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
+                            DEBUG_PRINT("not queal %f %f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
                         } else {
-                            printf("the same %f %f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
+                            DEBUG_PRINT("the same %f %f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
                         }
                     }
                 }
@@ -176,7 +178,7 @@ void cpu_backward_weights(float *in,float* out,float* weight
         }
     }
     clock_gettime(CLOCK_MONOTONIC, &tend);
-    printf("cpu computation took about %.5f seconds\n",
+    DEBUG_PRINT("cpu computation took about %.5f seconds\n",
            ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 
@@ -340,7 +342,7 @@ void fconv_generate_auxbuf( unsigned int* indices, const group_prop_t* p_prop, c
 
     npix=onx*ony;
     nvalid=bat*npix;
-printf("nvalid %u \n",nvalid);
+DEBUG_PRINT("nvalid %u \n",nvalid);
     unsigned int istr  = inc*sny ; //inc*sny
     unsigned int ostr  = onc*onx*ony*onz ; //onc*npx
 
@@ -354,8 +356,8 @@ printf("nvalid %u \n",nvalid);
         indices[i*2]=  (((ibt*istr+y)*snx+x)<<2);
         //indices[i*2]=  (((ibt*istr+sv*y)*snx+su*x)<<2);
         indices[i*2+1]=(ibt*ostr+pix)<<2;
-printf("fconv_generate_auxbuf1 %d %u  %u \n",i,ibt,indices[i*2]);
-printf("fconv_generate_auxbuf2 %d %u  %u \n",i,ibt,indices[i*2+1]);
+DEBUG_PRINT("fconv_generate_auxbuf1 %d %u  %u \n",i,ibt,indices[i*2]);
+DEBUG_PRINT("fconv_generate_auxbuf2 %d %u  %u \n",i,ibt,indices[i*2+1]);
     }
 }
 
@@ -402,36 +404,131 @@ void fconv_generate_span( unsigned int* p_span, const group_prop_t* p_prop, cons
 }
 
 
+void Parse(int argc, char* argv[],unsigned int* n, unsigned int* c,unsigned int* k,unsigned int* h,unsigned int* w
+,unsigned int* r,unsigned int* s,unsigned int* strideH,unsigned int* strideW)
+{
+    std::vector<std::string> args;
+    for(int i = 1; i < argc; i++) {
+        
+        args.push_back(argv[i]);
+    }
 
-int main() {
+    for(int i = 0; i < args.size(); i++)
+    {
+        std::string temp = args[i];
+        if(temp[0] != '-')
+        {
+            printf("Illegal input flag\n");
+        } else {
+            if(i + 1 >= args.size()) {
+                printf("parameter not enough\n");
+            } else {
+
+                char short_name = temp[1];
+                std::string para_value = args[i + 1];
+                if (short_name == 'n') {
+                    int value = atoi(para_value.c_str());
+                    *n= value;
+                } else if (short_name == 'c') {
+                    int value = atoi(para_value.c_str());
+                    *c= value;
+                }
+                else if (short_name == 'k') {
+                    int value = atoi(para_value.c_str());
+                    *k= value;
+                }
+
+                else if (short_name == 'h') {
+                    int value = atoi(para_value.c_str());
+                    *h= value;
+                }
+
+                else if (short_name == 'w') {
+                    int value = atoi(para_value.c_str());
+                    *w= value;
+                }
+
+
+                else if (short_name == 'r') {
+                    int value = atoi(para_value.c_str());
+                    *r= value;
+                }
+
+
+                else if (short_name == 's') {
+                    int value = atoi(para_value.c_str());
+                    *s= value;
+                }
+
+
+
+                else if (short_name == 'x') {
+                    int value = atoi(para_value.c_str());
+                    *strideW= value;
+                }
+
+                else if (short_name == 'y') {
+                    int value = atoi(para_value.c_str());
+                    *strideH= value;
+                }
+                //printf("para %c\n",short_name);
+                i++;
+            }
+        }
+    }
+}
+
+
+
+
+
+int main(int argc, char* argv[]) {
 //dilation kernel =r*(k-1)+1
-    int N=64; int C=224;int H=23;int W=17;//in
-    int K=224;///out,carefully,you need to place correct size when stride and dilation
+unsigned int nn=128;
+unsigned int kk=384;
+unsigned int cc=384;
+unsigned int hh=64;
+unsigned int ww=66;
+unsigned int rr=1;
+unsigned int ss=3;
+unsigned int yy=1;
+unsigned int xx=1;
+
+    Parse(argc,  argv,&nn,&cc,&kk,&hh,&ww,&rr,&ss,&yy,&xx);
+    HIP_ASSERT(hipSetDevice(0));
+
+
+    int N=nn; int C=cc;int H=hh;int W=ww;//in
+    int K=kk;///out,carefully,you need to place correct size when stride and dilation
     int padh=0; int padw=0;//S for padw
-    int R =7;int S=1;//wei
-    int strideH = 1; int strideW =1;
+    int R =rr;int S=ss;//wei
+    int strideH = yy; int strideW =xx;
     int dilation_h =1;int dilation_w =1;
     int group_count =1;
     int outH=(2*padh+H-R)/strideH+1;
     int outW=(2*padw+W-S)/strideW+1;
 
-    printf("outH is %d outW is %d \n",outH,outW);
+    printf("N is %d C is %d K is %d H is %d W is %d R is %d S is %d strideH is %d strideW is %d outH is %d outW is %d\n",
+    N,C, K ,H,W,R,S,strideH,strideW,outH,outW);
+
+
+    //DEBUG_PRINT("outH is %d outW is %d \n",outH,outW);
     int CRS_64 = (C * R * S+63)/64;
     int CRS_32 = (C * R * S+31)/32;
     int K_64 =  (K+63)/64;
     int K_8 = (K+7)/8;
 
 
-    if (((N*outH*outW)%64!=0) || (C*R*S%4!=0)  || (K%4!=0) || (group_count!=1))//k,crs is block of 4 ,if out of bound ,drop all block
+    if (((N*outH*outW)%64!=0) || ((C*R*S)%4!=0)  || (K%64!=0) || (group_count!=1))//k,crs is block of 4 ,if out of bound ,drop all block
     //NOO need 16 to split ,but after split,should factor of 4
     {
-        printf("please follow rules\n");
+        printf("please follow rules,can not use\n");
         return 0;
     }    
 
 
     int Global_Size = ((K+127)/128)* ((C * R * S+127)/128);
-    printf("Global_Size is %d\n",Global_Size);
+    DEBUG_PRINT("Global_Size is %d\n",Global_Size);
 
     int inSize = N*C*H*W* sizeof(float);
     int outSize = N*K*outH*outW* sizeof(float);
@@ -451,7 +548,7 @@ int main() {
          int j = (int)(r*10);
          if (j<1) j=(int)(i%10);
          in[i] = 1.0f*j;//r;
-         printf("input %d is %f \n",i,in[i]);
+         DEBUG_PRINT("input %d is %f \n",i,in[i]);
     }
 
     for (int i=0;i<outSize/sizeof(float);i++) {
@@ -459,7 +556,7 @@ int main() {
          int j = (int)(r*10);
          if (j<1) j=(int)(i%10);
          out[i] = 1.0f*j;//r;
-         printf("output %d is %f \n",i,out[i]);
+         DEBUG_PRINT("output %d is %f \n",i,out[i]);
     }
 
     for (int i=0;i<weiGroupSize/sizeof(float);i++) {
@@ -468,11 +565,11 @@ int main() {
     }
 
 
-    cpu_backward_weights(in,out,wei
-        ,N,C,H,W,
-        K,R,S,
-        outH,outW,strideH,strideW,
-        dilation_h,dilation_w);
+//    cpu_backward_weights(in,out,wei
+//        ,N,C,H,W,
+//        K,R,S,
+//        outH,outW,strideH,strideW,
+//        dilation_h,dilation_w);
 
 
 
@@ -533,13 +630,13 @@ fconv_generate_span( (unsigned int*)&temp[nb_amap*2], gprop, strides, 0 );
 unsigned int* temp2 =(unsigned int*)temp;
 for (int i =0;i<N*outH*outW*2;i++)
 {
-    printf("kevin aux %d %u\n",i,temp2[i]);
+    DEBUG_PRINT("kevin aux %d %u\n",i,temp2[i]);
 }
 
 //unsigned int* temp3 =(unsigned int*)(temp2[ntidx*2]);
 for (int i =0;i<C*R*S;i++)
 {
-    printf("kevin crs %d %u\n",i,temp2[ntidx*2+i]);
+    DEBUG_PRINT("kevin crs %d %u\n",i,temp2[ntidx*2+i]);
 }
 
     unsigned int* d_auxbuf;
@@ -629,7 +726,6 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-    printf("before get function\n");
 
     hipModuleLoad(&Module, "for.co");
     hipModuleLoad(&Module_add, "add.co");
@@ -638,7 +734,6 @@ for (int i =0;i<C*R*S;i++)
     hipModuleGetFunction(&Function_add, Module_add, "split_add");
 
 
-    printf("after get function\n");
 
     struct {
        void *auxbuf;//0x00
@@ -757,7 +852,7 @@ for (int i =0;i<C*R*S;i++)
         HIP_LAUNCH_PARAM_BUFFER_SIZE, &size,
         HIP_LAUNCH_PARAM_END
     };
-    printf("kevin global size is %d\n",Global_Size);
+    DEBUG_PRINT("kevin  kernel global size is %d\n",Global_Size);
 
 
 
@@ -792,21 +887,21 @@ for (int i =0;i<C*R*S;i++)
     //for debug
     for (int i=0;i<256;i++)
     {
-        printf("==========test %d  %f ======\n",i,host_test[i]);
+        DEBUG_PRINT("==========test %d  %f ======\n",i,host_test[i]);
     }
     for (int i=0;i<2*256*Global_Size;i++)
     {
-        printf("==========test second %d %u ======\n",i,second_test[i]);
+        DEBUG_PRINT("==========test second %d %u ======\n",i,second_test[i]);
     }
     for (int i =0;i<weiGroupSize/sizeof(float);i++)
     {
-      printf("dwei %d is %f\n",i,dwei_gpu[i]);
+      DEBUG_PRINT("dwei %d is %f\n",i,dwei_gpu[i]);
     }
 
     //compare
 //    compare(wei,dwei_gpu,K, C, R, S,1);
 
-    std::cout<<std::endl;
+//    std::cout<<std::endl;
 
 
 
@@ -829,7 +924,8 @@ for (int i =0;i<C*R*S;i++)
        void* matrixC;//0x00 
        void* final_matrixC;//0x08
        unsigned int KCRS;//0x10
-       unsigned int CRS;
+       unsigned int CRS;//0x14
+       //unsigned int K;//0x20
        void* test;//0x18
        void* second_test;//0x20
       
@@ -858,6 +954,7 @@ for (int i =0;i<C*R*S;i++)
     args_add.final_matrixC = (void*)device_final_KCRS;
     args_add.KCRS = K*C*R*S;
     args_add.CRS = C*R*S;
+    //args_add.K = K;
     args_add.test = (void*)device_test_add;
     args_add.second_test= (void*)device_second_test_add;
 
@@ -895,7 +992,7 @@ for (int i =0;i<C*R*S;i++)
     
     for (int i =0 ;i<64;i++)
     {
-        printf("==========after add %d  %f ======\n",i,host_final_KCRS[i]);
+        DEBUG_PRINT("==========after add %d  %f ======\n",i,host_final_KCRS[i]);
     }
 
 
@@ -905,20 +1002,20 @@ for (int i =0;i<C*R*S;i++)
 
 
     //for debug
-    for (int i=0;i<64;i++)
-    {
-        printf("==========add test %d  %f ======\n",i,host_test_add[i]);
-    }
-    for (int i=0;i<64;i++)
-    {
-        printf("==========add test second %d %u ======\n",i,second_test_add[i]);
-    }
+    //for (int i=0;i<64;i++)
+    //{
+    //    DEBUG_PRINT("==========add test %d  %f ======\n",i,host_test_add[i]);
+    //}
+    //for (int i=0;i<64;i++)
+    ///{
+    //    DEBUG_PRINT("==========add test second %d %u ======\n",i,second_test_add[i]);
+    //}
 
 
 
-    compare(wei,host_final_KCRS,K, C, R, S,0);
+//    compare(wei,host_final_KCRS,K, C, R, S,0);
 
-    std::cout<<std::endl;
+//    std::cout<<std::endl;
 
 
 

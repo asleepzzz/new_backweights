@@ -44,10 +44,9 @@ double verify(float* r1, float* r2, size_t n)
 
         double s2=std::sqrt(square_difference);
         double s3 = std::sqrt(r1_d) * mag;
-printf(" square_difference %.15f r1_d %d mag %.15f s2 %.15f s3 %15f\n",square_difference,r1_d,mag,s2,s3);
+        //printf(" square_difference %.15f r1_d %d mag %.15f s2 %.15f s3 %15f\n",square_difference,r1_d,mag,s2,s3);
         
         return std::sqrt(square_difference)/(std::sqrt(r1_d) * mag);
-        //return static_cast<double>(std::sqrt(square_difference) / (std::sqrt(r1_d) * mag));
     }
     else
         return std::numeric_limits<double>::max();

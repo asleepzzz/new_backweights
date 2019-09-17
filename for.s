@@ -2430,7 +2430,7 @@ write_over:
 ;global_store_dword  v[124:125], v[vgpr_block_thread_tile_y], s[36:37]
 ;global_store_dword  v[124:125], v[vgpr_FMA_value+1], s[36:37]
 ;global_store_dword  v[124:125], v[vgpr_FMA_value], s[36:37]
-       ;//kevin end
+       ;//test end
 xxxx:
 
 

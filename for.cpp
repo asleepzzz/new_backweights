@@ -107,8 +107,6 @@ printf("shit %.9f\n",error_weights);
 
     double square_tmp =0.0;
     double max_tmp =0.0;
-    //for (int g=0;g<group_count;g++)
-    //{
         for (int i =0;i<(weiN);i++)
         {
             for (int j =0;j<(weiC);j++)
@@ -157,7 +155,6 @@ printf("shit %.9f\n",error_weights);
                 }
             }
         }
-    //}
 
     //miopen
     double tolrence = (std::sqrt((double)square_tmp) / ((double)std::sqrt(weiN*weiC*weiH*weiW) * (double)max_tmp));
@@ -205,10 +202,8 @@ void cpu_backward_weights(float *in,float* out,float* weight
                         {
                            for(int w = 0; w < outW; w++)
                            {
-                                int in_h = h*dilation_h  + y*strideH ;
-                                int in_w = w*dilation_w  + x*strideW ;
-                                //int in_h = h*strideH  + y*dilation_h ;
-                                //int in_w = w*strideW  + x*dilation_w ;
+                                int in_h = h*strideH  + y*dilation_h ;
+                                int in_w = w*strideW  + x*dilation_w ;
                                 if((in_h >= 0) && (in_h < H) && (in_w >= 0) && (in_w < W))
                                 {
 //                                    #pragma omp atomic
@@ -231,124 +226,6 @@ void cpu_backward_weights(float *in,float* out,float* weight
            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 
 
-}
-
-
-
-void cpu_backward_weights_group(float *in,float* out,float* weight
-                          ,int N,int C,int H,int W,
-                          int K,int R,int S,
-                          int outH,int outW,
-                          int strideH, int strideW,
-                          int dilation_h,int dilation_w,int group_count)
-{
-
-    struct timespec tstart={0,0}, tend={0,0};
-
-    clock_gettime(CLOCK_MONOTONIC, &tstart);
-int cnt=0;
-    for(int o = 0; o < N; o++)
-    {
-        for(int g = 0; g < group_count; g++)
-        {
-            for(int w = 0; w < K/ group_count; w++)
-            {//name is w ,but it's k
-                for(int k = 0; k < C/ group_count; k++)
-                {//name is k ,but it's c
-                    for(int x = 0; x < R; x++)
-                    {//name is x ,but it's y
-                        for(int y = 0; y < S; y++)
-                        {//name is y ,but it's x
-                            for(int i = 0; i < outH; i++)
-                            {
-                                for(int j = 0; j < outW; j++)
-                                {
-
-                                    
-                                    int in_i = i*dilation_h  + x*strideH ;
-                                    int in_j = j*dilation_w  + y*strideW ;
-                                   printf("in_i %d in_j %d H %d, W %d x %d ,strideH %d  R %d \n",in_i,in_j,H,W,x,strideH,R); 
-                                    if((in_i >= 0) && (in_i < H) && (in_j >= 0) &&
-                                        (in_j < W))
-                                    {
-
-
-                                       //printf("kevin %d %d %d  %f add %f mul %f in %d out %d\n",cnt,x,y,weight[(k*R*S)+ (x * S) + y],in[o *C*H*W+in_i *W + in_j],out[(o*K*outH*outW) +(i*outW)+j]
-                                        //,o *C*H*W+in_i *W + in_j,(o*K*outH*outW) +(i*outW)+j);
-/*
-if (g==0&& x==0&&y==0&&w==0) {
-                                         printf("kevin %d   %f add %f mul %f in %d out %d\n",cnt,
-                                         weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y],
-                                         in[o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j],
-                                         out[(o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j],
-                                         o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j,
-                                         (o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j);
-}
-*/
-
-
-
-                                      weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y]
-                                        += in[o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j]
-*out[(o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j];
-
-
-
-
-
-
-
-                                        //weight[C*R*S+(k*R*S)+ (x * S) + y]
-                                        //+= in[o *C*H*W+in_i *W + in_j]
-                                        //*out[(o*K*outH*outW)+outH*outW +(i*outW)+j];
-
-//ckrs
-//if (k==0 && w==0&&x==0&&y==0)
-//{
-//    printf("every time after add %f %f %f\n",weight[((g * (K / group_count)+w)*((C*R*S)/group_count)) + (k*R*S)+ (x * S) + y],
-//in[o *C*H*W+ ((g * (C / group_count)+k)*H*W)+in_i *W + in_j],out[(o*K*outH*outW) +((g * (K / group_count)+w)*outH*outW)+(i*outW)+j]);
-//}
- 
-cnt++;
-                                    
-
-                                        }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    clock_gettime(CLOCK_MONOTONIC, &tend);
-    printf("cpu computation took about %.5f seconds\n",
-           ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
-           ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-
-}
-
-void calculateUniIndex(int* unifiedIndex ,int N,int OutH,int OutW,int C,int H,int W ,int K,int strideH,int strideW,int dilationH,int dilationW,int group_count)
-{//index*2 for matrix A & B,size is N*Oh*Ow*2
-///Index[group][2][N*Oh*Ow]
-
-    int matrixK = N*OutH*OutW;
-    for (int g=0;g<group_count;g++) {
-        for (int matrix_kk_index =0;matrix_kk_index< matrixK;matrix_kk_index++) {
-            int n = matrix_kk_index /(OutH*OutW);
-            int h = matrix_kk_index%(OutH*OutW)/OutW;
-            int w = matrix_kk_index%(OutH*OutW)%OutW;
-
-            int num = (C/group_count)*H*W;
-            unifiedIndex[matrix_kk_index+g*2*matrixK]=  n*C*H*W+h*dilationH*W+dilationW*w;//for MatrixA
-            unifiedIndex[matrix_kk_index+g*2*matrixK]+= g*num;//when you split your data,you need this offset to get real position for group conv
-
-            num = (K/group_count)*OutH*OutW;   
-            unifiedIndex[matrixK+matrix_kk_index+g*2*matrixK]= n*K*OutH*OutW+h*OutW+w;//+128*OutH*OutW;//for MatrixB
-            unifiedIndex[matrixK+matrix_kk_index+g*2*matrixK] += g*num;//when you split your data,you need this offset to get real position for group conv
-        }
-    }
 }
 
 
@@ -388,7 +265,6 @@ void fconv_generate_auxbuf( unsigned int* indices, const group_prop_t* p_prop, c
         pix=isafe%npix;
         unsigned int y=pix/onx;
         unsigned int x=pix%onx;
-        ///back weights need to add su sv to crs
         indices[i*2]=  (((ibt*istr+sv*y)*snx+su*x)<<2);
         //indices[i*2]=  (((ibt*istr+sv*y)*snx+su*x)<<2);
         indices[i*2+1]=(ibt*ostr+pix)<<2;
@@ -518,6 +394,7 @@ void Parse(int argc, char* argv[],unsigned int* n, unsigned int* c,unsigned int*
 
 
 //#define test_open 1
+//#define kernel_test_open 1
 int main(int argc, char* argv[]) {
 
 //dilation kernel =r*(k-1)+1
@@ -553,11 +430,6 @@ if (((unsigned long long)kk*(unsigned long long)cc*(unsigned long long)rr*(unsig
     continue;
 if (((unsigned long long)kk*(unsigned long long)nn*(unsigned long long)hh*(unsigned long long)ww)>= (unsigned long long)(1<<28))
     continue;
-//if (((unsigned long long)cc*(unsigned long long)rr*(unsigned long long)rr)> (unsigned long long)(4096))
-//    continue;
-//if (cc%16 != 0)
-//    continue;
-
 #else
 
 
@@ -586,6 +458,8 @@ if (((unsigned long long)kk*(unsigned long long)nn*(unsigned long long)hh*(unsig
     int K_8 = (K+7)/8;
 
 
+//                19  
+//N*outW*outH <= 2     FOR precision
     if (((N*outH*outW)%64!=0) || ((C*R*S)%32!=0)  || (K%8!=0) || (group_count!=1))//k,crs is block of 4 ,if out of bound ,drop all block
     //NOO need 16 to split ,but after split,should factor of 4
     {
@@ -612,8 +486,10 @@ float Data_scale = static_cast<float>(0.01);
     float *wei = (float *)malloc(wei_cpu_size);
     float *dwei_gpu = (float *)malloc(weiGroupSize);
 
+#if defined (kernel_test_open)
     float *host_test = (float *)malloc(256*sizeof(float));
     unsigned int *second_test =(unsigned int*)malloc(256*Global_Size*sizeof(unsigned int));
+#endif
 
     for (int i=0;i<inSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
@@ -657,7 +533,6 @@ clock_gettime(CLOCK_MONOTONIC, &tstart);
            ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
            ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 
-//mkldnn_conv_fwd_nchw (in, out, wei, N,C, H, W, K,R ,S, 0, 0, strideH, strideW, 1, 1);
 
     cpu_backward_weights(in,out,wei
         ,N,C,H,W,
@@ -668,19 +543,6 @@ clock_gettime(CLOCK_MONOTONIC, &tstart);
 
 
     
-//    cpu_backward_weights_group(in,out,wei
-//        ,N,C,H,W,
-//        K,R,S,
-//        outH,outW,strideH,strideW,
-//        dilation_h,dilation_w,group_count);
-
-//for (int i =0;i<weiGroupSize/sizeof(float);i++)
-//{
-//      printf("cpu %d: %f\n ",i,wei[i]);
-//}
-
-//    printf("cpu %d: %f\n ",1,wei[1]);
-
 
 
 group_prop_t *gprop = new group_prop_t();
@@ -724,13 +586,13 @@ fconv_generate_span( (unsigned int*)&temp[nb_amap*2], gprop, strides, 0 );
 unsigned int* temp2 =(unsigned int*)temp;
 for (int i =0;i<N*outH*outW*2;i++)
 {
-    DEBUG_PRINT("kevin aux %d %u\n",i,temp2[i]);
+    DEBUG_PRINT(" aux %d %u\n",i,temp2[i]);
 }
 
 //unsigned int* temp3 =(unsigned int*)(temp2[ntidx*2]);
 for (int i =0;i<C*R*S;i++)
 {
-    DEBUG_PRINT("kevin crs %d %u\n",i,temp2[ntidx*2+i]);
+    DEBUG_PRINT(" crs %d %u\n",i,temp2[ntidx*2+i]);
 }
 
     unsigned int* d_auxbuf;
@@ -740,27 +602,8 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-    int uniIndexSize = 2*N*outH*outW*sizeof(int)*group_count;
-    int* uniFiedIndex = (int*)malloc(uniIndexSize);
-    calculateUniIndex(uniFiedIndex,N, outH, outW,C,H,W , K,strideH,strideW,dilation_h,dilation_w,group_count);
-    //printf("kevin shit %d\n",uniFiedIndex[14399]);
-
     int BLOCKS_PER_K = (K+127)/128;
     int block_size = ((Global_Size+BLOCKS_PER_K-1)/BLOCKS_PER_K);
-
-//    int *mnOffset = (int*)malloc(2*Global_Size*sizeof(int));
-//    calculateMNOffsetIndex(mnOffset,BLOCKS_PER_K,Global_Size);
-    //printf("kevin n 22 is %d \n",mnOffset[22+Global_Size]);
-
-    int crsOffsetSize = block_size*128*sizeof(unsigned int);//thread
-    unsigned int* inIndex = (unsigned int*)malloc(crsOffsetSize);
-    calculateCRSOffsetIndex(inIndex ,block_size, N, outH, outW, C, H, W , K, R, S, strideH, strideW);
-    //printf("kevin crs is %u %u %u %u\n",inIndex[128],inIndex[1],inIndex[2],inIndex[3]);
-
-    int outOffsetSize = block_size*16*8*sizeof(int);
-    int* outIndex = (int*)malloc(outOffsetSize);
-    calculateOutIndex(outIndex ,block_size,BLOCKS_PER_K, K, C, R, S);
-    //printf("out 1504 is %d\n",outIndex[1504]);
 
     hipInit(0);
     hipDevice_t device;
@@ -775,28 +618,16 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-
+#if defined (kernel_test_open)
     
-    int* device_uniIndex;
-    unsigned int* device_inIndex;
-    int* device_outIndex;
-//    int* device_mnOffset;
     float* device_test;
     unsigned int *device_second_test;
 
 
-//    HIP_ASSERT(hipMalloc(&device_mnOffset, 2*Global_Size*sizeof(int)));
-//    HIP_ASSERT(hipMalloc(&device_uniIndex, uniIndexSize));
-//    HIP_ASSERT(hipMalloc(&device_inIndex, crsOffsetSize));
-//    HIP_ASSERT(hipMalloc(&device_outIndex, outOffsetSize));
     HIP_ASSERT(hipMalloc(&device_test, 256*sizeof(float)));
     HIP_ASSERT(hipMalloc(&device_second_test, 256*Global_Size*sizeof(unsigned int)));
     
-
-//    HIP_ASSERT(hipMemcpy(device_mnOffset,mnOffset, 2*Global_Size*sizeof(int), hipMemcpyHostToDevice));
-//    HIP_ASSERT(hipMemcpy(device_uniIndex,uniFiedIndex, uniIndexSize, hipMemcpyHostToDevice));
-//    HIP_ASSERT(hipMemcpy(device_inIndex,inIndex, crsOffsetSize, hipMemcpyHostToDevice));
-//    HIP_ASSERT(hipMemcpy(device_outIndex,outIndex, outOffsetSize, hipMemcpyHostToDevice));
+#endif
 
     float* devicein;
     float* deviceout;
@@ -815,9 +646,6 @@ for (int i =0;i<C*R*S;i++)
     HIP_ASSERT(hipMemcpy(devicedwei,dwei_gpu, weiGroupSize, hipMemcpyHostToDevice));
 
     int Threads_Size = 256;
-
-//    hipMemcpy(hResult,Rd, sizeof(float) * x, hipMemcpyDeviceToHost);
-
 
 
 
@@ -844,74 +672,16 @@ for (int i =0;i<C*R*S;i++)
        unsigned int NOO;//0x3c
        unsigned int OO;//0x40
        unsigned int NCHW_1;//0x44
-//       void *crsoffset;//0x44
-//       unsigned int extra;
+#if defined (kernel_test_open)
        void* test;//0x48
        void* second_test;//0x50
+#endif
     } args;
 
 
-/*
-    struct {
-        void *device_uniIndex;//0x00
-        void *device_inIndex;//0x08
-        void *device_outIndex;//0x10
-        void *device_mnOffset;//0x18
-        void* devicein;//0x20
-        void* deviceout;//0x28
-        void* devicedwei;//0x30
-        void* device_test;//0x38
-        void* device_second_test;//0x40
 
-        int N;//0x48
-        int CINGroup;//0x4c
-        int H;//0x50
-        int W;//0x54
-        unsigned int KINGroup;//0x58
-        int R;//0x5c
-        int S;//0x60
-        int outH;//0x64
-        int outW;//0x68
-        int strideH;//0x6c
-        int strideW;//0x70
-        int dilation_h;//0x74
-        int dilation_w;//0x78
-        int group_count;//0x7c
-        int global_size;//0x80
-
-    } args;
-
-    
-    args.device_uniIndex = device_uniIndex;
-    args.device_inIndex = device_inIndex;
-    args.device_outIndex = device_outIndex;
-    args.device_mnOffset = device_mnOffset;
-    args.devicein = devicein;
-    args.deviceout = deviceout;
-    args.devicedwei = devicedwei;
-    args.device_test = device_test;
-    args.device_second_test = device_second_test;
-
-    args.N = N;
-    args.CINGroup = (C/group_count);
-    args.H = H;
-    args.W = W;
-    args.KINGroup = (K/group_count); 
-    args.R = R;
-    args.S = S;
-    args.outH = outH;
-    args.outW = outW;
-    args.strideH = strideH;
-    args.strideW = strideW;
-    args.dilation_h = dilation_h;
-    args.dilation_w = dilation_w;
-    args.group_count = group_count;
-    args.global_size = Global_Size;
-*/
-
-
-    args.auxbuf= (void*)((unsigned char*)d_auxbuf);//(void*)((unsigned char*)device_uniIndex);//    ( (unsigned char*)device_uniIndex);
-    args.span =  (void*)(((unsigned char*)d_auxbuf)+(nb_amap*2));//(void*)((unsigned char*)device_inIndex);//(((unsigned char*)device_uniIndex)+4*ntidx);
+    args.auxbuf= (void*)((unsigned char*)d_auxbuf);
+    args.span =  (void*)(((unsigned char*)d_auxbuf)+(nb_amap*2));
 
     args.CRS_group = C*R*S;
     args.K = K;
@@ -923,7 +693,6 @@ for (int i =0;i<C*R*S;i++)
     args.matrixB = (void*)deviceout;
 
     args.matrixC = (void*)devicedwei;
-    //args.onpx = onpx;
 
     args.alpha=1.0f;
 
@@ -931,11 +700,10 @@ for (int i =0;i<C*R*S;i++)
 
     args.OO=outW*outH;
     args.NCHW_1 = (N*W*H*C)*4;
-//    args.crsoffset = (void*)(((unsigned char*)d_auxbuf)+(nb_amap<<1)) ;//(((unsigned char*)device_uniIndex)+8*ntidx);
-//    args.extra=2;
+#if defined (kernel_test_open)
     args.test = (void*)device_test;
     args.second_test= (void*)device_second_test;
-
+#endif
 
 
 
@@ -946,10 +714,10 @@ for (int i =0;i<C*R*S;i++)
         HIP_LAUNCH_PARAM_BUFFER_SIZE, &size,
         HIP_LAUNCH_PARAM_END
     };
-    DEBUG_PRINT("kevin  kernel global size is %d\n",Global_Size);
+    DEBUG_PRINT("  kernel global size is %d\n",Global_Size);
 
 
-
+//for test performance
 //hipModuleLaunchKernel(Function,Global_Size,1,1,Threads_Size,1,1,0,0,NULL,(void**)&config);
     float eventMs = 0.0f;
     hipEvent_t start, stop;
@@ -964,21 +732,20 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-    //hipModuleLaunchKernel(Function,1,1,1,1,1,1,0,0,NULL,(void**)&config);
-
-    //hipModuleLaunchKernel(Function,4,1,1,4,1,1,0,0,NULL,(void**)&config);
-    //hipDeviceSynchronize();
 
     hipEventRecord(stop, NULL);
     hipEventSynchronize(stop);
     hipEventElapsedTime(&eventMs, start, stop);
     printf("kernel profiler computation time taken  = %6.3fms\n", eventMs);
 
+#if defined (kernel_test_open)
     CHECK(hipMemcpy(host_test,device_test, 256*sizeof(float), hipMemcpyDeviceToHost));
     CHECK(hipMemcpy(second_test,device_second_test, 256*Global_Size*sizeof(unsigned int), hipMemcpyDeviceToHost));
+#endif
     CHECK(hipMemcpy(dwei_gpu,devicedwei, weiGroupSize, hipMemcpyDeviceToHost));
 
     //for debug
+#if defined (kernel_test_open)
     for (int i=0;i<256;i++)
     {
         DEBUG_PRINT("==========test %d  %f ======\n",i,host_test[i]);
@@ -991,6 +758,7 @@ for (int i =0;i<C*R*S;i++)
     {
       DEBUG_PRINT("dwei %d is %f\n",i,dwei_gpu[i]);
     }
+#endif
 
     //compare
 //    compare(wei,dwei_gpu,K, C, R, S,N*outH*outW,1);
@@ -1001,7 +769,7 @@ for (int i =0;i<C*R*S;i++)
 
 //------------------add---------------------------
 
-
+#if defined (kernel_test_open)
     float *host_test_add = (float *)malloc(256*sizeof(float));
     unsigned int *second_test_add =(unsigned int*)malloc(256*sizeof(unsigned int));
 
@@ -1011,7 +779,7 @@ for (int i =0;i<C*R*S;i++)
 
     HIP_ASSERT(hipMalloc(&device_test_add, 256*sizeof(float)));
     HIP_ASSERT(hipMalloc(&device_second_test_add, 256*sizeof(unsigned int)));
- 
+#endif
 
 
     struct {
@@ -1019,39 +787,31 @@ for (int i =0;i<C*R*S;i++)
        void* final_matrixC;//0x08
        unsigned int KCRS;//0x10
        unsigned int CRS;//0x14
-       //unsigned int K;//0x20
+#if defined (kernel_test_open)
        void* test;//0x18
        void* second_test;//0x20
+#endif
       
     } args_add;
 
 
     int kcrs_16_size = 16*K*C*R*S* sizeof(float); 
     int kcrs_size = K*C*R*S* sizeof(float);
-    //float* host_16_KCRS = (float*)malloc(kcrs_16_size);
     float* host_final_KCRS = (float*)malloc(kcrs_size);
 
-    //for (int i=0;i< 16*K*C*R*S;i++)
-    //{
-    //    host_16_KCRS[i] = i*1.0f;
-    //}
-
-    //float* device_16_KCRS;
     float* device_final_KCRS;
-    //HIP_ASSERT(hipMalloc((void**)&device_16_KCRS, kcrs_16_size));
     HIP_ASSERT(hipMalloc((void**)&device_final_KCRS, kcrs_size));
-    //hipMemcpyHtoD( device_16_KCRS, host_16_KCRS, kcrs_16_size );
     hipMemcpyHtoD( device_final_KCRS, host_final_KCRS, kcrs_size );
 
 
-    args_add.matrixC = (void*)devicedwei;//(void*)device_16_KCRS;
+    args_add.matrixC = (void*)devicedwei;
     args_add.final_matrixC = (void*)device_final_KCRS;
     args_add.KCRS = K*C*R*S;
     args_add.CRS = C*R*S;
-    //args_add.K = K;
+#if defined (kernel_test_open)
     args_add.test = (void*)device_test_add;
     args_add.second_test= (void*)device_second_test_add;
-
+#endif
 
 
 
@@ -1089,23 +849,24 @@ for (int i =0;i<C*R*S;i++)
         DEBUG_PRINT("==========after add %d  %f ======\n",i,host_final_KCRS[i]);
     }
 
-
+#if defined (kernel_test_open)
     CHECK(hipMemcpy(host_test_add,device_test_add, 64*sizeof(float), hipMemcpyDeviceToHost));
     CHECK(hipMemcpy(second_test_add,device_second_test_add, 64*sizeof(unsigned int), hipMemcpyDeviceToHost));
   
 
 
-    //for debug
-    //for (int i=0;i<64;i++)
-    //{
-    //    DEBUG_PRINT("==========add test %d  %f ======\n",i,host_test_add[i]);
-    //}
-    //for (int i=0;i<64;i++)
-    ///{
-    //    DEBUG_PRINT("==========add test second %d %u ======\n",i,second_test_add[i]);
-    //}
+    for debug
+    for (int i=0;i<64;i++)
+    {
+        DEBUG_PRINT("==========add test %d  %f ======\n",i,host_test_add[i]);
+    }
+    for (int i=0;i<64;i++)
+    {
+        DEBUG_PRINT("==========add test second %d %u ======\n",i,second_test_add[i]);
+    }
 
 
+#endif
 
     compare(wei,host_final_KCRS,K, C, R, S,N*outH*outW,0);
 
@@ -1113,28 +874,28 @@ for (int i =0;i<C*R*S;i++)
 
 
 
-
-//    HIP_ASSERT(hipFree(device_16_KCRS));
+#if defined (kernel_test_open)
     HIP_ASSERT(hipFree(device_test_add));
     HIP_ASSERT(hipFree(device_second_test_add));
+#endif
     HIP_ASSERT(hipFree(device_final_KCRS));    
 
 
     HIP_ASSERT(hipFree(d_auxbuf));
 
-//    HIP_ASSERT(hipFree(device_uniIndex));
-//    HIP_ASSERT(hipFree(device_inIndex));
-//    HIP_ASSERT(hipFree(device_outIndex));
     HIP_ASSERT(hipFree(deviceout));
     HIP_ASSERT(hipFree(devicein));
     HIP_ASSERT(hipFree(devicedwei));
+
+#if defined (kernel_test_open)
     HIP_ASSERT(hipFree(device_test));
     HIP_ASSERT(hipFree(device_second_test));
 
 
-//    free(host_16_KCRS);
     free(host_test_add);
     free(second_test_add);
+#endif
+
     free(host_final_KCRS);
 
     free(temp);
@@ -1143,13 +904,11 @@ for (int i =0;i<C*R*S;i++)
     free(out);
     free(wei);
     free(dwei_gpu);
-    free(uniFiedIndex);
-    free(inIndex);
-//    free(mnOffset);
-    free(outIndex);
+
+#if defined (kernel_test_open)
     free(host_test);
     free(second_test);
-
+#endif
 
 
 

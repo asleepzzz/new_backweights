@@ -460,7 +460,7 @@ if (((unsigned long long)kk*(unsigned long long)nn*(unsigned long long)hh*(unsig
 
 //                19  
 //N*outW*outH <= 2     FOR precision
-    if (((N*outH*outW)%64!=0) || ((C*R*S)%32!=0)  || (K%8!=0) || (group_count!=1))//k,crs is block of 4 ,if out of bound ,drop all block
+    if (((N*outH*outW)%64!=0) ||   (N*outH*outW) > pow(2, 19) || ((C*R*S)%32!=0)  || (K%8!=0) || (group_count!=1))//k,crs is block of 4 ,if out of bound ,drop all block
     //NOO need 16 to split ,but after split,should factor of 4
     {
         printf("please follow rules,can not use\n");

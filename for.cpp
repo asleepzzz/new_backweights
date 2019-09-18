@@ -103,7 +103,7 @@ void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int num_
 
 
     double error_weights = verify( cpu,hip,weiN*weiC*weiH*weiW* sizeof(float));
-printf("shit %.9f\n",error_weights);
+    printf("error_weights %.15f\n",error_weights);
 
     double square_tmp =0.0;
     double max_tmp =0.0;
@@ -409,13 +409,13 @@ unsigned int yy=1;
 unsigned int xx=1;
 
 #if defined (test_open) 
-for (int nn=8192;nn>=1;nn-=2500)
+for (int nn=1024;nn>=1;nn-=20)
 {
-for (int cc=4096;cc>=16;cc-=16)
+for (int cc=4096;cc>=32;cc-=32)
 {
-for (int kk=4096;kk>=8;kk-=8)
+for (int kk=4096;kk>=16;kk-=16)
 {
-for (int ww=100;ww>=3;ww-=15)
+for (int ww=100;ww>=3;ww-=12)
 {
 
 unsigned int rr=7;
@@ -528,17 +528,19 @@ clock_gettime(CLOCK_MONOTONIC, &tstart);
 
 //mkldnn_conv_bwd_f_nchw (in, wei, out, N,C, H, W, K,R ,S, 0, 0, strideH, strideW, 1, 1);
 
-    clock_gettime(CLOCK_MONOTONIC, &tend);
-    DEBUG_PRINT("mkl computation took about %.5f seconds\n",
-           ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
-           ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-
-
     cpu_backward_weights(in,out,wei
         ,N,C,H,W,
         K,R,S,
         outH,outW,strideH,strideW,
         dilation_h,dilation_w);
+
+
+
+    clock_gettime(CLOCK_MONOTONIC, &tend);
+    DEBUG_PRINT("mkl or cpu computation took about %.5f seconds\n",
+           ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
+           ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+
 
 
 
@@ -764,7 +766,6 @@ for (int i =0;i<C*R*S;i++)
 //    compare(wei,dwei_gpu,K, C, R, S,N*outH*outW,1);
 
 //    std::cout<<std::endl;
-
 
 
 //------------------add---------------------------

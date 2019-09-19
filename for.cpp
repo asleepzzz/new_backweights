@@ -356,24 +356,22 @@ int main(int argc, char* argv[]) {
 unsigned int nn=128;
 unsigned int kk=384;
 unsigned int cc=384;
-unsigned int hh=64;
-unsigned int ww=66;
+unsigned int hh=4;
+unsigned int ww=4;
 unsigned int rr=1;
 unsigned int ss=3;
 unsigned int yy=1;
 unsigned int xx=1;
 
 #if defined (test_open) 
-for (unsigned int nn=4096;nn>=1;nn-=300)
+for (unsigned int nn=4096;(int)nn>=1;nn-=300)
 {
-printf("n is %u\n",nn);
-for (unsigned int cc=4096;cc>=32;cc-=320)
+for (unsigned int cc=4096;(int)cc>=32;cc-=320)
 {
-for (unsigned int kk=4096;kk>=16;kk-=320)
+for (unsigned int kk=4096;(int)kk>=16;kk-=320)
 {
-for (unsigned int ww=100;ww>=3;ww-=30)
+for (unsigned int ww=100;(int)ww>=10;ww-=30)
 {
-
 unsigned int rr=7;
 unsigned int ss=1;
 unsigned int yy=1;

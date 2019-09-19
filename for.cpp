@@ -348,7 +348,7 @@ void Parse(int argc, char* argv[],unsigned int* n, unsigned int* c,unsigned int*
 
 
 
-#define test_open 1
+//#define test_open 1
 //#define kernel_test_open 1
 int main(int argc, char* argv[]) {
 
@@ -605,11 +605,19 @@ for (unsigned int i =0;i<C*R*S;i++)
     int Threads_Size = 256;
 
 
+    if (((C*R*S)%64 ==0) && (K%64 ==0))
+    {
+        hipModuleLoad(&Module, "bw_special.co");
+    } else if ((C*R*S)%64 ==0) {
+        hipModuleLoad(&Module, "bw_crs64.co");
+    } else if ((K)%64 ==0) {
+        hipModuleLoad(&Module, "bw_k64.co");
+    } else {
+        hipModuleLoad(&Module, "bw_schedule.co");
+    }
 
-    hipModuleLoad(&Module, "for.co");
-    hipModuleLoad(&Module_add, "add.co");
     hipModuleGetFunction(&Function, Module, "back_weights");
-
+    hipModuleLoad(&Module_add, "add.co");
     hipModuleGetFunction(&Function_add, Module_add, "split_add");
 
 
@@ -675,7 +683,7 @@ for (unsigned int i =0;i<C*R*S;i++)
 
 
 //for test performance
-//hipModuleLaunchKernel(Function,Global_Size,1,1,Threads_Size,1,1,0,0,NULL,(void**)&config);
+    //hipModuleLaunchKernel(Function,Global_Size,1,1,Threads_Size,1,1,0,0,NULL,(void**)&config);
     float eventMs = 0.0f;
     hipEvent_t start, stop;
     hipEventCreate(&start);

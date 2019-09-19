@@ -43,88 +43,43 @@ typedef struct{
 
 
 
-void calculateOutIndex(int* outIndex ,int blocks,int BLOCKS_PER_K,int K,int C,int R, int S)
-{
-    for (int b=0;b<blocks;b++)
-    {
-        for(int t =0; t < 16; t++)
-        {
-            for(int i =0; i < 8; i++)
-            {
-		    int m = i + ((t%16)*8)+(b *128);//if block id not equal to 0 ,CRS need to add
-                                        			
-		    int c = m / (R*S);
-		    int r = (m % (R*S)) / S;
-		    int s = (m % (R*S)) % S;
-					
-                    outIndex[b*16*8+t*8+i]= c*R*S + r *S + s;
-            }
-        }
-    }
-}
-
-void calculateCRSOffsetIndex(unsigned int* inIndex ,int block,int N,int OutH,int OutW,int C,int H,int W ,int K,int R,int S,int strideH,int strideW)
-{
-        int BLOCKS_PER_K = (K+127)/128;
-
-        for (int i =0;i<block;i++)
-        {
-            for (int j =0;j<128;j++)//ThreadID
-            {
-                int m_offset_global_fetch = i  *128 + j;
-                int wg_c_global_fetch = m_offset_global_fetch / (R*S);
-                int wg_r_global_fetch = (m_offset_global_fetch % (R*S) ) / S;
-                int wg_s_global_fetch = (m_offset_global_fetch % (R*S) ) % S;
-                int matrix_a_offset = (unsigned int)(wg_c_global_fetch * H *W + wg_r_global_fetch*strideH * W + wg_s_global_fetch*strideW);
-
-
-                //IF C *R*S is out of boundary
-                if(wg_c_global_fetch >=C) {
-                    matrix_a_offset = (unsigned int)(C*H*W-1);
-                }
- 
-                inIndex[i*128+j] = matrix_a_offset;
-            }
-        }
-}
-
-int computeWeiIndex(int g,int i, int j, int k,int l,int weiN,int weiC,int weiH,int weiW,int group_count )
+unsigned int computeWeiIndex(unsigned int g,unsigned int i,unsigned int j, unsigned int k,unsigned int l,unsigned int weiN,unsigned int weiC,unsigned int weiH,unsigned int weiW,unsigned int group_count )
 {
     return (g*(weiN/group_count)+i)*(weiC/group_count)*weiH*weiW+j*weiH*weiW+k*weiW+l;
 }
 
 
-void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int num_matrixK,int combine)
+void compare(float* cpu,float* hip,unsigned int weiN,unsigned int weiC,unsigned int weiH,unsigned int  weiW,unsigned int num_matrixK,unsigned int combine)
 {
 
     //std::vector<float> cpu_vector(cpu, cpu + weiN*weiC*weiH*weiW);
     //std::vector<float> gpu_vector(hip, hip + weiN*weiC*weiH*weiW);
     //double tt= rms_range(cpu_vector,gpu_vector);
 
-
+ 
     double error_weights = verify( cpu,hip,weiN*weiC*weiH*weiW* sizeof(float));
     printf("error_weights %.15f\n",error_weights);
 
     double square_tmp =0.0;
     double max_tmp =0.0;
-        for (int i =0;i<(weiN);i++)
+        for (unsigned int i =0;i<(weiN);i++)
         {
-            for (int j =0;j<(weiC);j++)
+            for (unsigned int j =0;j<(weiC);j++)
             {
-                for (int k =0;k<weiH;k++)
+                for (unsigned int k =0;k<weiH;k++)
                 {
-                    for (int l =0;l<weiW;l++)
+                    for (unsigned int l =0;l<weiW;l++)
                     {
-                        int index = computeWeiIndex( 0,i,  j,  k, l, weiN, weiC, weiH, weiW,1); 
+                        unsigned int index = computeWeiIndex( 0,i,  j,  k, l, weiN, weiC, weiH, weiW,1); 
                         float tmp=0;
                         if (combine ==1)
                         {
-                            for (int u =0;u<16;u++)
+                            for (unsigned int u =0;u<16;u++)
                             {
                                 tmp+=hip[index+u*weiN*weiC*weiH*weiW];
                                 if (index==0)
                                 {
-                                    DEBUG_PRINT("16 combine %d  index %d is %f\n",u,index+u*weiN*weiC*weiH*weiW,hip[index+u*weiN*weiC*weiH*weiW]);
+                                    DEBUG_PRINT("16 combine %u  index %u is %f\n",u,index+u*weiN*weiC*weiH*weiW,hip[index+u*weiN*weiC*weiH*weiW]);
                                 }
                             
                             }
@@ -146,10 +101,10 @@ void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int num_
                             //printf("error %f %f\n",cpu[index],tmp);
 
                             //return ;
-                            DEBUG_PRINT("not queal %.15f %15f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
+                            DEBUG_PRINT("not queal %.15f %15f kcrs  %u %u %u %u\n",cpu[index],tmp,i,j,k,l);
                         } else {
 
-                            DEBUG_PRINT("the same %.15f %.15f kcrs  %d %d %d %d\n",cpu[index],tmp,i,j,k,l);
+                            DEBUG_PRINT("the same %.15f %.15f kcrs  %u %u %u %u\n",cpu[index],tmp,i,j,k,l);
                         }
                     }
                 }
@@ -171,11 +126,11 @@ void compare(float* cpu,float* hip,int weiN,int weiC,int weiH,int  weiW,int num_
 }
 
 void cpu_backward_weights(float *in,float* out,float* weight
-                          ,int N,int C,int H,int W,
-                          int K,int R,int S,
-                          int outH,int outW,
-                          int strideH, int strideW,
-                          int dilation_h,int dilation_w)
+                          ,unsigned int N,unsigned int C,unsigned int H,unsigned int W,
+                          unsigned int K,unsigned int R,unsigned int S,
+                          unsigned int outH,unsigned int outW,
+                          unsigned int strideH,unsigned int strideW,
+                          unsigned int dilation_h,unsigned int dilation_w)
 {
 
     struct timespec tstart={0,0}, tend={0,0};
@@ -183,27 +138,27 @@ void cpu_backward_weights(float *in,float* out,float* weight
 
     clock_gettime(CLOCK_MONOTONIC, &tstart);
 
-       for(int k = 0; k < K; k++)
+       for(unsigned int k = 0; k < K; k++)
         {
-            for(int c = 0; c < C; c++)
+            for(unsigned int c = 0; c < C; c++)
             {
-                for(int y = 0; y < R; y++)
+                for(unsigned int y = 0; y < R; y++)
                 {
-                    for(int x = 0; x < S; x++)
+                    for(unsigned int x = 0; x < S; x++)
                     {
 
                         double acc =0;//if you dont use double to add here, precision will miss
 
 //    #pragma omp parallel for
-    for(int n = 0; n < N; n++)
+    for(unsigned int n = 0; n < N; n++)
     {
  
-                        for(int h = 0; h < outH; h++)
+                        for(unsigned int h = 0; h < outH; h++)
                         {
-                           for(int w = 0; w < outW; w++)
+                           for(unsigned int w = 0; w < outW; w++)
                            {
-                                int in_h = h*strideH  + y*dilation_h ;
-                                int in_w = w*strideW  + x*dilation_w ;
+                                unsigned int in_h = h*strideH  + y*dilation_h ;
+                                unsigned int in_w = w*strideW  + x*dilation_w ;
                                 if((in_h >= 0) && (in_h < H) && (in_w >= 0) && (in_w < W))
                                 {
 //                                    #pragma omp atomic
@@ -259,7 +214,7 @@ void fconv_generate_auxbuf( unsigned int* indices, const group_prop_t* p_prop, c
     unsigned int istr  = inc*sny ; //inc*sny
     unsigned int ostr  = onc*onx*ony*onz ; //onc*npx
 
-    for(int i=0; i<ntidx; ++i ){
+    for(unsigned int i=0; i<ntidx; ++i ){
         isafe=i<nvalid?i:0;
         unsigned int ibt=isafe/npix;//small n
         pix=isafe%npix;
@@ -339,61 +294,61 @@ void Parse(int argc, char* argv[],unsigned int* n, unsigned int* c,unsigned int*
                 char short_name = temp[1];
                 std::string para_value = args[i + 1];
                 if (short_name == 'n') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *n= value;
                 } else if (short_name == 'c') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *c= value;
                 }
                 else if (short_name == 'k') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *k= value;
                 }
 
                 else if (short_name == 'h') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *h= value;
                 }
 
                 else if (short_name == 'w') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *w= value;
                 }
 
 
                 else if (short_name == 'r') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *r= value;
                 }
 
 
                 else if (short_name == 's') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *s= value;
                 }
 
 
 
                 else if (short_name == 'x') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *strideW= value;
                 }
 
                 else if (short_name == 'y') {
-                    int value = atoi(para_value.c_str());
+                    unsigned int value = atoi(para_value.c_str());
                     *strideH= value;
                 }
                 //printf("para %c\n",short_name);
                 i++;
             }
         }
-    }
+    } 
 }
 
 
 
 
-//#define test_open 1
+#define test_open 1
 //#define kernel_test_open 1
 int main(int argc, char* argv[]) {
 
@@ -409,13 +364,14 @@ unsigned int yy=1;
 unsigned int xx=1;
 
 #if defined (test_open) 
-for (int nn=1024;nn>=1;nn-=20)
+for (unsigned int nn=4096;nn>=1;nn-=300)
 {
-for (int cc=4096;cc>=32;cc-=32)
+printf("n is %u\n",nn);
+for (unsigned int cc=4096;cc>=32;cc-=320)
 {
-for (int kk=4096;kk>=16;kk-=16)
+for (unsigned int kk=4096;kk>=16;kk-=320)
 {
-for (int ww=100;ww>=3;ww-=12)
+for (unsigned int ww=100;ww>=3;ww-=30)
 {
 
 unsigned int rr=7;
@@ -424,11 +380,11 @@ unsigned int yy=1;
 unsigned int xx=1;
 unsigned int hh=ww+6;
 
-if (((unsigned long long)nn*(unsigned long long)cc*(unsigned long long)hh*(unsigned long long)ww)>= (unsigned long long)(1<<28))
+if (((unsigned long long)nn*(unsigned long long)cc*(unsigned long long)hh*(unsigned long long)ww)>= (unsigned long long)(1<<30))
     continue;
-if (((unsigned long long)16*(unsigned long long)kk*(unsigned long long)cc*(unsigned long long)rr*(unsigned long long)ss)>= (unsigned long long)(1<<28))
+if (((unsigned long long)16*(unsigned long long)kk*(unsigned long long)cc*(unsigned long long)rr*(unsigned long long)ss)>= (unsigned long long)(1<<30))
     continue;
-if (((unsigned long long)kk*(unsigned long long)nn*(unsigned long long)hh*(unsigned long long)ww)>= (unsigned long long)(1<<28))
+if (((unsigned long long)kk*(unsigned long long)nn*(unsigned long long)hh*(unsigned long long)ww)>= (unsigned long long)(1<<30))
     continue;
 #else
 
@@ -437,31 +393,31 @@ if (((unsigned long long)kk*(unsigned long long)nn*(unsigned long long)hh*(unsig
     HIP_ASSERT(hipSetDevice(0));
 
 #endif
-    int N=nn; int C=cc;int H=hh;int W=ww;//in
-    int K=kk;///out,carefully,you need to place correct size when stride and dilation
-    int padh=0; int padw=0;//S for padw
-    int R =rr;int S=ss;//wei
-    int strideH = yy; int strideW =xx;
-    int dilation_h =1;int dilation_w =1;
-    int group_count =1;
-    int outH=(2*padh+H-R)/strideH+1;
-    int outW=(2*padw+W-S)/strideW+1;
+    unsigned int N=nn; unsigned int C=cc;
+    unsigned int H=hh; unsigned int W=ww;//in
+    unsigned int K=kk;///out,carefully,you need to place correct size when stride and dilation
+    unsigned int padh=0; unsigned int padw=0;//S for padw
+    unsigned int R =rr;unsigned int S=ss;//wei
+    unsigned int strideH = yy; unsigned int strideW =xx;
+    unsigned int dilation_h =1;unsigned int dilation_w =1;
+    unsigned int group_count =1;
+    unsigned int outH=(2*padh+H-R)/strideH+1;
+    unsigned int outW=(2*padw+W-S)/strideW+1;
 
-    printf("N is %d C is %d K is %d H is %d W is %d R is %d S is %d strideH is %d strideW is %d outH is %d outW is %d\n",
+    printf("N is %u C is %u K is %u H is %u W is %u R is %u S is %u strideH is %u strideW is %u outH is %u outW is %u\n",
     N,C, K ,H,W,R,S,strideH,strideW,outH,outW);
 
-
-    //DEBUG_PRINT("outH is %d outW is %d \n",outH,outW);
-    int CRS_64 = (C * R * S+63)/64;
-    int CRS_32 = (C * R * S+31)/32;
-    int K_64 =  (K+63)/64;
-    int K_8 = (K+7)/8;
+    //DEBUG_PRINT("outH is %u outW is %u \n",outH,outW);
+    unsigned int CRS_64 = (C * R * S+63)/64;
+    unsigned int CRS_32 = (C * R * S+31)/32;
+    unsigned int K_64 =  (K+63)/64;
+    unsigned int K_8 = (K+7)/8;
 
 
 //                19  
 //N*outW*outH <= 2     FOR precision
     if (((N*outH*outW)%64!=0) ||   (N*outH*outW) > pow(2, 19) || ((C*R*S)%32!=0)  || (K%8!=0) || (group_count!=1)
-    || (K*C*R*S*16>(1<<28)) || (N*C*H*W>(1<<28)) || (N*K*outH*outW>(1<<28)))//k,crs is block of 4 ,if out of bound ,drop all block
+    || (K*C*R*S*16>=(1<<30)) || (N*C*H*W>=(1<<30)) || (N*K*outH*outW>=(1<<30)))//k,crs is block of 4 ,if out of bound ,drop all block
     //NOO need 16 to split ,but after split,should factor of 4
     {
         printf("please follow rules,can not use\n");
@@ -472,15 +428,15 @@ if (((unsigned long long)kk*(unsigned long long)nn*(unsigned long long)hh*(unsig
 #endif
     }    
 
-float Data_scale = static_cast<float>(0.01);
+    float Data_scale = static_cast<float>(0.01);
 
-    int Global_Size = ((K+127)/128)* ((C * R * S+127)/128);
+    unsigned int Global_Size = ((K+127)/128)* ((C * R * S+127)/128);
 //    DEBUG_PRINT("Global_Size is %d\n",Global_Size);
 
-    int inSize = N*C*H*W* sizeof(float);
-    int outSize = N*K*outH*outW* sizeof(float);
-    int weiGroupSize = 16*K*C*R*S* sizeof(float);
-    int wei_cpu_size = K*C*R*S* sizeof(float);
+    unsigned int inSize = N*C*H*W* sizeof(float);
+    unsigned int outSize = N*K*outH*outW* sizeof(float);
+    unsigned int weiGroupSize = 16*K*C*R*S* sizeof(float);
+    unsigned int wei_cpu_size = K*C*R*S* sizeof(float);
 
     float *in = (float *)malloc(inSize);
     float *out = (float *)malloc(outSize);
@@ -492,33 +448,33 @@ float Data_scale = static_cast<float>(0.01);
     unsigned int *second_test =(unsigned int*)malloc(256*Global_Size*sizeof(unsigned int));
 #endif
 
-    for (int i=0;i<inSize/sizeof(float);i++) {
+    for (unsigned int i=0;i<inSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
 
-         int j = (int)(r*10);
-         if (j<1) j=(int)(i%10);
+         unsigned int j = (unsigned int)(r*10);
+         if (j<1) j=(unsigned int)(i%10);
          in[i] = static_cast <float>(Data_scale * RAN_GEN<float>(static_cast<float>(0.0), static_cast<float>(1.0)));
-         //in[i] = miopen_scale*r;
+         //in[i] = 1.0f*j;
 //         DEBUG_PRINT("input %d is %f \n",i,in[i]);
     }
 
-    for (int i=0;i<outSize/sizeof(float);i++) {
+    for (unsigned int i=0;i<outSize/sizeof(float);i++) {
          float r = (float)(static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
-         int j = (int)(r*10);
-         if (j<1) j=(int)(i%10);
-         //out[i] = miopen_scale*r;
+         unsigned int j = (unsigned int)(r*10);
+         if (j<1) j=(unsigned int)(i%10);
          out[i] =  static_cast <float>(Data_scale * RAN_GEN<float>(static_cast<float>(0.0), static_cast<float>(1.0)));
+
+         //out[i] = 1.0f*j;
 //         DEBUG_PRINT("output %d is %f \n",i,out[i]);
     }
 
-    for (int i=0;i<wei_cpu_size/sizeof(float);i++) {
+    for (unsigned int i=0;i<wei_cpu_size/sizeof(float);i++) {
          wei[i] =static_cast<float>(0);
          
     }
 
 
-
-    for (int i=0;i<weiGroupSize/sizeof(float);i++) {
+    for (unsigned int i=0;i<weiGroupSize/sizeof(float);i++) {
          dwei_gpu[i] = static_cast<float>(0);
     }
 
@@ -527,13 +483,13 @@ float Data_scale = static_cast<float>(0.01);
 struct timespec tstart={0,0}, tend={0,0}; 
 clock_gettime(CLOCK_MONOTONIC, &tstart);
 
-//mkldnn_conv_bwd_f_nchw (in, wei, out, N,C, H, W, K,R ,S, 0, 0, strideH, strideW, 1, 1);
+mkldnn_conv_bwd_f_nchw (in, wei, out, N,C, H, W, K,R ,S, 0, 0, strideH, strideW, 1, 1);
 
-    cpu_backward_weights(in,out,wei
-        ,N,C,H,W,
-        K,R,S,
-        outH,outW,strideH,strideW,
-        dilation_h,dilation_w);
+//    cpu_backward_weights(in,out,wei
+//        ,N,C,H,W,
+//        K,R,S,
+//        outH,outW,strideH,strideW,
+//        dilation_h,dilation_w);
 
 
 
@@ -573,40 +529,40 @@ unsigned int* dilations = (unsigned int*)malloc(3*sizeof(unsigned int));
 dilations = NULL;
 
 unsigned char*       temp;
-temp=(unsigned char *)malloc(1u<<28);
+temp=(unsigned char *)malloc(1u<<30);
 
 
-int NOO_64 = ((N*outH*outW+63)/64);
-int NOO_256 = ((N*outH*outW+255)/256);
-int CRS_8 =(C*R*S+7)/8;
-int ntidx = NOO_256*256;//you need to read next 16 NOO,and you have 16 split ,it's 16*16=256
-int nb_amap = ntidx*4;
-int nb_span = (CRS_8*8+32)*4;
+unsigned int NOO_64 = ((N*outH*outW+63)/64);
+unsigned int NOO_256 = ((N*outH*outW+255)/256);
+unsigned int CRS_8 =(C*R*S+7)/8;
+unsigned int ntidx = NOO_256*256;//you need to read next 16 NOO,and you have 16 split ,it's 16*16=256
+unsigned int nb_amap = ntidx*4;
+unsigned int nb_span = (CRS_8*8+32)*4;
 fconv_generate_auxbuf(  (unsigned int*)(&temp[0]), gprop, strides, ntidx  );
 //*4 is address *2 is 2 auxbuf
 fconv_generate_span( (unsigned int*)&temp[nb_amap*2], gprop, strides, 0 );
     
 unsigned int* temp2 =(unsigned int*)temp;
-for (int i =0;i<N*outH*outW*2;i++)
+for (unsigned int i =0;i<N*outH*outW*2;i++)
 {
-    DEBUG_PRINT(" aux %d %u\n",i,temp2[i]);
+    DEBUG_PRINT(" aux %u %u\n",i,temp2[i]);
 }
 
 //unsigned int* temp3 =(unsigned int*)(temp2[ntidx*2]);
-for (int i =0;i<C*R*S;i++)
+for (unsigned int i =0;i<C*R*S;i++)
 {
-    DEBUG_PRINT(" crs %d %u\n",i,temp2[ntidx*2+i]);
+    DEBUG_PRINT(" crs %u %u\n",i,temp2[ntidx*2+i]);
 }
 
     unsigned int* d_auxbuf;
-    hipMalloc( (void**)&d_auxbuf, 1<<28 );
+    hipMalloc( (void**)&d_auxbuf, 1<<30 );
     hipMemcpyHtoD( d_auxbuf, temp, (nb_amap*2)+nb_span );
 
 
 
 
-    int BLOCKS_PER_K = (K+127)/128;
-    int block_size = ((Global_Size+BLOCKS_PER_K-1)/BLOCKS_PER_K);
+    unsigned int BLOCKS_PER_K = (K+127)/128;
+    unsigned int block_size = ((Global_Size+BLOCKS_PER_K-1)/BLOCKS_PER_K);
 
     hipInit(0);
     hipDevice_t device;
@@ -753,13 +709,13 @@ for (int i =0;i<C*R*S;i++)
     {
         DEBUG_PRINT("==========test %d  %f ======\n",i,host_test[i]);
     }
-    for (int i=0;i<2*256*Global_Size;i++)
+    for (unsigned int i=0;i<2*256*Global_Size;i++)
     {
-        DEBUG_PRINT("==========test second %d %u ======\n",i,second_test[i]);
+        DEBUG_PRINT("==========test second %u %u ======\n",i,second_test[i]);
     }
-    for (int i =0;i<weiGroupSize/sizeof(float);i++)
+    for (unsigned int i =0;i<weiGroupSize/sizeof(float);i++)
     {
-      DEBUG_PRINT("dwei %d is %f\n",i,dwei_gpu[i]);
+      DEBUG_PRINT("dwei %u is %f\n",i,dwei_gpu[i]);
     }
 #endif
 
@@ -797,8 +753,8 @@ for (int i =0;i<C*R*S;i++)
     } args_add;
 
 
-    int kcrs_16_size = 16*K*C*R*S* sizeof(float); 
-    int kcrs_size = K*C*R*S* sizeof(float);
+    unsigned int kcrs_16_size = 16*K*C*R*S* sizeof(float); 
+    unsigned int kcrs_size = K*C*R*S* sizeof(float);
     float* host_final_KCRS = (float*)malloc(kcrs_size);
 
     float* device_final_KCRS;

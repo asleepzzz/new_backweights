@@ -347,7 +347,7 @@ void Parse(int argc, char* argv[],unsigned int* n, unsigned int* c,unsigned int*
 
 
 
-
+//#define test_perf 1
 //#define test_open 1
 //#define kernel_test_open 1
 int main(int argc, char* argv[]) {
@@ -364,7 +364,7 @@ unsigned int yy=1;
 unsigned int xx=1;
 
 #if defined (test_open) 
-for (unsigned int nn=4096;(int)nn>=1;nn-=300)
+for (unsigned int nn=4096;(int)nn>=1;nn-=256)
 {
 for (unsigned int cc=4096;(int)cc>=32;cc-=320)
 {
@@ -372,11 +372,11 @@ for (unsigned int kk=4096;(int)kk>=16;kk-=320)
 {
 for (unsigned int ww=100;(int)ww>=10;ww-=30)
 {
-unsigned int rr=7;
-unsigned int ss=1;
-unsigned int yy=1;
-unsigned int xx=1;
-unsigned int hh=ww+6;
+unsigned int rr=3;
+unsigned int ss=3;
+unsigned int yy=2;
+unsigned int xx=2;
+unsigned int hh=ww;
 
 if (((unsigned long long)nn*(unsigned long long)cc*(unsigned long long)hh*(unsigned long long)ww)>= (unsigned long long)(1<<30))
     continue;
@@ -683,55 +683,10 @@ for (unsigned int i =0;i<C*R*S;i++)
 
 
 //for test performance
-    //hipModuleLaunchKernel(Function,Global_Size,1,1,Threads_Size,1,1,0,0,NULL,(void**)&config);
-    float eventMs = 0.0f;
-    hipEvent_t start, stop;
-    hipEventCreate(&start);
-    hipEventCreate(&stop);
-    hipEventRecord(start, NULL);
-
-
-    hipModuleLaunchKernel(Function,K_64,CRS_64,16,Threads_Size,1,1,0,0,NULL,(void**)&config);
-
-
-
-
-
-
-    hipEventRecord(stop, NULL);
-    hipEventSynchronize(stop);
-    hipEventElapsedTime(&eventMs, start, stop);
-    printf("kernel profiler computation time taken  = %6.3fms\n", eventMs);
-
-#if defined (kernel_test_open)
-    CHECK(hipMemcpy(host_test,device_test, 256*sizeof(float), hipMemcpyDeviceToHost));
-    CHECK(hipMemcpy(second_test,device_second_test, 256*Global_Size*sizeof(unsigned int), hipMemcpyDeviceToHost));
+#if defined (test_perf)
+float time_avg =0.0f;
+    hipModuleLaunchKernel(Function,1,1,1,Threads_Size,1,1,0,0,NULL,(void**)&config);
 #endif
-    CHECK(hipMemcpy(dwei_gpu,devicedwei, weiGroupSize, hipMemcpyDeviceToHost));
-
-    //for debug
-#if defined (kernel_test_open)
-    for (int i=0;i<256;i++)
-    {
-        DEBUG_PRINT("==========test %d  %f ======\n",i,host_test[i]);
-    }
-    for (unsigned int i=0;i<2*256*Global_Size;i++)
-    {
-        DEBUG_PRINT("==========test second %u %u ======\n",i,second_test[i]);
-    }
-    for (unsigned int i =0;i<weiGroupSize/sizeof(float);i++)
-    {
-      DEBUG_PRINT("dwei %u is %f\n",i,dwei_gpu[i]);
-    }
-#endif
-
-    //compare
-//    compare(wei,dwei_gpu,K, C, R, S,N*outH*outW,1);
-
-//    std::cout<<std::endl;
-
-
-//------------------add---------------------------
 
 #if defined (kernel_test_open)
     float *host_test_add = (float *)malloc(256*sizeof(float));
@@ -788,6 +743,83 @@ for (unsigned int i =0;i<C*R*S;i++)
         HIP_LAUNCH_PARAM_BUFFER_SIZE, &size_add,
         HIP_LAUNCH_PARAM_END
     };
+#if defined (test_perf)
+
+    hipModuleLaunchKernel(Function_add,1,1,1,Threads_Size_add,1,1,0,0,NULL,(void**)&config_add);
+#endif
+
+
+#if defined (test_perf)
+for (int i=0;i<10;i++)
+{
+#endif
+    float eventMs = 0.0f;
+    hipEvent_t start, stop;
+    hipEventCreate(&start);
+    hipEventCreate(&stop);
+    hipEventRecord(start, NULL);
+
+
+    hipModuleLaunchKernel(Function,K_64,CRS_64,16,Threads_Size,1,1,0,0,NULL,(void**)&config);
+
+
+
+
+
+
+    hipEventRecord(stop, NULL);
+    hipEventSynchronize(stop);
+    hipEventElapsedTime(&eventMs, start, stop);
+    printf("kernel profiler computation time taken  = %6.3fms\n", eventMs);
+#if defined (test_perf)
+
+    time_avg+=eventMs;
+}
+time_avg= time_avg/10.0f;
+printf("avg kernel profiler computation time taken  = %6.3fms\n", time_avg);
+printf("=====================\n");
+#endif
+
+
+
+#if defined (kernel_test_open)
+    CHECK(hipMemcpy(host_test,device_test, 256*sizeof(float), hipMemcpyDeviceToHost));
+    CHECK(hipMemcpy(second_test,device_second_test, 256*Global_Size*sizeof(unsigned int), hipMemcpyDeviceToHost));
+#endif
+    CHECK(hipMemcpy(dwei_gpu,devicedwei, weiGroupSize, hipMemcpyDeviceToHost));
+
+    //for debug
+#if defined (kernel_test_open)
+    for (int i=0;i<256;i++)
+    {
+        DEBUG_PRINT("==========test %d  %f ======\n",i,host_test[i]);
+    }
+    for (unsigned int i=0;i<2*256*Global_Size;i++)
+    {
+        DEBUG_PRINT("==========test second %u %u ======\n",i,second_test[i]);
+    }
+    for (unsigned int i =0;i<weiGroupSize/sizeof(float);i++)
+    {
+      DEBUG_PRINT("dwei %u is %f\n",i,dwei_gpu[i]);
+    }
+#endif
+
+    //compare
+//    compare(wei,dwei_gpu,K, C, R, S,N*outH*outW,1);
+
+//    std::cout<<std::endl;
+
+
+//------------------add---------------------------
+
+//for test performance
+#if defined (test_perf)
+float time_avg2 =0.0f;
+
+for (int i=0;i<10;i++)
+{
+#endif
+
 
 
     float eventMs_add = 0.0f;
@@ -796,14 +828,22 @@ for (unsigned int i =0;i<C*R*S;i++)
     hipEventCreate(&stop_add);
     hipEventRecord(start_add, NULL);
 
-
-
     hipModuleLaunchKernel(Function_add,K_8,CRS_32,1,Threads_Size_add,1,1,0,0,NULL,(void**)&config_add);
 
     hipEventRecord(stop_add, NULL);
     hipEventSynchronize(stop_add);
     hipEventElapsedTime(&eventMs_add, start_add, stop_add);
     printf("ADD kernel profiler computation time taken  = %6.3fms\n", eventMs_add);
+
+#if defined (test_perf)
+time_avg2+=eventMs_add;
+}
+time_avg2= time_avg2/10.0f;
+printf("avg ADD kernel profiler computation time taken  = %6.3fms\n", time_avg2);
+#endif
+
+
+
 
 
     CHECK(hipMemcpy(host_final_KCRS,device_final_KCRS, kcrs_size, hipMemcpyDeviceToHost));

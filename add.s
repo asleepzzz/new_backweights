@@ -12,13 +12,13 @@ split_add:
                 enable_trap_handler = 1
                 is_ptr64 = 1
                 user_sgpr_count = 2
-                kernarg_segment_byte_size = 100
+                kernarg_segment_byte_size = 40
                 kernel_code_entry_byte_offset = 256
                 granulated_wavefront_sgpr_count = 2;(s+3)+8-1/8-1
                 granulated_workitem_vgpr_count = 15;(v+4-1)/4-1
                 wavefront_sgpr_count = 24;sgpr+3
                 workitem_vgpr_count = 64
-                workgroup_group_segment_byte_size = 32768;//LDS size
+                workgroup_group_segment_byte_size = 0;//LDS size
                 enable_sgpr_workgroup_id_x = 1;s2
                 enable_sgpr_workgroup_id_y = 1;s3
                 enable_sgpr_workgroup_id_z = 1;s4
